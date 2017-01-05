@@ -12,7 +12,9 @@ CC = gcc
 LD = $(CC)
 
 PURPLE_MOD ?= $(shell pkg-config --exists purple-3 && echo purple-3 || echo purple)
-CFLAGS_PURPLE = $(shell pkg-config --cflags $(PURPLE_MOD))
+PLUGIN_DIR_PURPLE:=$(shell pkg-config --variable=plugindir $(PURPLE_MOD))
+DATA_ROOT_DIR_PURPLE:=$(shell pkg-config --variable=datarootdir $(PURPLE_MOD))
+
 CFLAGS = \
     -g \
     -O2 \
@@ -22,22 +24,21 @@ CFLAGS = \
     -DPURPLE_PLUGINS \
     -DPIC -DENABLE_NLS \
     -std=c99 \
-    $(CFLAGS_PURPLE)
+    $(shell pkg-config --cflags $(PURPLE_MOD))
 
 INCLUDES_CURL = -I/home/necrosis/development/usr/include
 
-LIBS_PURPLE = $(shell pkg-config --libs $(PURPLE_MOD))
-LIBS_CURL = -L/home/necrosis/development/usr/lib -lcurl -lm #$(shell pkg-config --libs curl)
+LIBS = \
+	$(shell pkg-config --libs $(PURPLE_MOD)) \
+	$(shell pkg-config --libs curl)
+
 LDFLAGS = -shared
 
 %.o: %.c
 	$(V_CC)$(CC) -c $(CFLAGS) -o $@ $< $(INCLUDES_CURL)
 
 $(LIBNAME): $(C_OBJS)
-	$(V_LINK)$(LD) $(LDFLAGS) -o $@ $^ $(LIBS_PURPLE) $(LIBS_CURL)
-
-PLUGIN_DIR_PURPLE:=$(shell pkg-config --variable=plugindir $(PURPLE_MOD))
-DATA_ROOT_DIR_PURPLE:=$(shell pkg-config --variable=datarootdir $(PURPLE_MOD))
+	$(V_LINK)$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 .PHONY: install
 install: $(LIBNAME)
