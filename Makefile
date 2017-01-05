@@ -10,7 +10,9 @@ C_OBJS = $(C_SRCS:.c=.o)
 
 CC = gcc
 LD = $(CC)
-CFLAGS_PURPLE = $(shell pkg-config --cflags purple)
+
+PURPLE_MOD ?= $(shell pkg-config --exists purple-3 && echo purple-3 || echo purple)
+CFLAGS_PURPLE = $(shell pkg-config --cflags $(PURPLE_MOD))
 CFLAGS = \
     -g \
     -O2 \
@@ -24,7 +26,7 @@ CFLAGS = \
 
 INCLUDES_CURL = -I/home/necrosis/development/usr/include
 
-LIBS_PURPLE = $(shell pkg-config --libs purple)
+LIBS_PURPLE = $(shell pkg-config --libs $(PURPLE_MOD))
 LIBS_CURL = -L/home/necrosis/development/usr/lib -lcurl -lm #$(shell pkg-config --libs curl)
 LDFLAGS = -shared
 
@@ -34,8 +36,8 @@ LDFLAGS = -shared
 $(LIBNAME): $(C_OBJS)
 	$(V_LINK)$(LD) $(LDFLAGS) -o $@ $^ $(LIBS_PURPLE) $(LIBS_CURL)
 
-PLUGIN_DIR_PURPLE:=$(shell pkg-config --variable=plugindir purple)
-DATA_ROOT_DIR_PURPLE:=$(shell pkg-config --variable=datarootdir purple)
+PLUGIN_DIR_PURPLE:=$(shell pkg-config --variable=plugindir $(PURPLE_MOD))
+DATA_ROOT_DIR_PURPLE:=$(shell pkg-config --variable=datarootdir $(PURPLE_MOD))
 
 .PHONY: install
 install: $(LIBNAME)
