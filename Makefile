@@ -40,12 +40,15 @@ LDFLAGS = -shared
 $(LIBNAME): $(C_OBJS)
 	$(V_LINK)$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-.PHONY: install
+.PHONY: install install-user
 install: $(LIBNAME)
 	install -D $(LIBNAME) $(PLUGIN_DIR_PURPLE)/$(LIBNAME)
 	install --mode=0644 img/slack16.png $(DATA_ROOT_DIR_PURPLE)/pixmaps/pidgin/protocols/16/slack.png
 	install --mode=0644 img/slack22.png $(DATA_ROOT_DIR_PURPLE)/pixmaps/pidgin/protocols/22/slack.png
 	install --mode=0644 img/slack48.png $(DATA_ROOT_DIR_PURPLE)/pixmaps/pidgin/protocols/48/slack.png
+
+install-user: $(LIBNAME)
+	install -D $(LIBNAME) $(HOME)/.purple/plugins/$(LIBNAME)
 
 .PHONY: uninstall
 uninstall: $(LIBNAME)
