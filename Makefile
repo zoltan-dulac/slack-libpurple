@@ -14,6 +14,7 @@ LD = $(CC)
 PURPLE_MOD ?= $(shell pkg-config --exists purple-3 && echo purple-3 || echo purple)
 PLUGIN_DIR_PURPLE:=$(shell pkg-config --variable=plugindir $(PURPLE_MOD))
 DATA_ROOT_DIR_PURPLE:=$(shell pkg-config --variable=datarootdir $(PURPLE_MOD))
+PKGS=$(PURPLE_MOD) libcurl
 
 CFLAGS = \
     -g \
@@ -24,18 +25,14 @@ CFLAGS = \
     -DPURPLE_PLUGINS \
     -DPIC -DENABLE_NLS \
     -std=c99 \
-    $(shell pkg-config --cflags $(PURPLE_MOD))
+    $(shell pkg-config --cflags $(PKGS))
 
-INCLUDES_CURL = -I/home/necrosis/development/usr/include
-
-LIBS = \
-	$(shell pkg-config --libs $(PURPLE_MOD)) \
-	$(shell pkg-config --libs curl)
+LIBS = $(shell pkg-config --libs $(PKGS))
 
 LDFLAGS = -shared
 
 %.o: %.c
-	$(V_CC)$(CC) -c $(CFLAGS) -o $@ $< $(INCLUDES_CURL)
+	$(V_CC)$(CC) -c $(CFLAGS) -o $@ $<
 
 $(LIBNAME): $(C_OBJS)
 	$(V_LINK)$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
