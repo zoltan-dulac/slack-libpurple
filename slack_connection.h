@@ -74,6 +74,16 @@ slack_connection_destroy(SlackConnection *slackcon);
 
 
 SlackConnection *
+slack_api_request(
+	SlackAccount *sa,
+	SlackMethod method,
+	const gchar *call,
+	const gchar *query, 
+	const gchar *postdata,
+	SlackProxyCallbackFunc callback_func, 
+	gpointer user_data
+);
+SlackConnection *
 get_or_post_request(
 	SlackAccount *na,
 	SlackMethod method,

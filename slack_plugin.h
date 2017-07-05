@@ -27,6 +27,7 @@ typedef struct _SlackAccount {
 	gpointer *rtm; // List of all rtm connections
 
 	GSList *channels;
+	GHashTable *channel; /* id -> slack_channel */
 } SlackAccount;
 
 

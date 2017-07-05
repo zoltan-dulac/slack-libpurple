@@ -835,6 +835,54 @@ get_or_post_request(
 	return slackcon;
 }
 
+struct slack_api_request {
+	SlackProxyCallbackFunc callback;
+	gpointer user_data;
+};
+
+static void
+slack_api_response_cb(
+		SlackAccount *sa,
+		json_value *obj,
+		struct slack_api_request *req) {
+	json_value *ok = json_get_value(obj, "ok");
+	if (!ok || ok->type != json_boolean || !ok->u.boolean) {
+		json_value *err = json_get_value(obj, "error");
+		purple_debug_error(PROTOCOL_CODE, "Slack error response: %s", err && err->type == json_string ? err->u.str.ptr : "unknown");
+	} else {
+		req->callback(sa, obj, req->user_data);
+	}
+	g_free(req);
+}
+
+SlackConnection *
+slack_api_request(
+	SlackAccount *sa,
+	SlackMethod method,
+	const gchar *call,
+	const gchar *query,
+	const gchar *postdata,
+	SlackProxyCallbackFunc callback_func, 
+	gpointer user_data
+)
+{
+	GString *url = g_string_new(NULL);
+	g_string_printf(url, "/api/%s?token=%s", call, purple_url_encode(sa->token));
+	if (query) {
+		g_string_append_c(url, '&');
+		g_string_append(url, query);
+	}
+	struct slack_api_request *req = NULL;
+	if (callback_func) {
+		req = g_new(struct slack_api_request, 1);
+		req->callback = callback_func;
+		req->user_data = user_data;
+	}
+	SlackConnection *c = get_or_post_request(sa, method, NULL, url->str, postdata, req ? slack_api_response_cb : NULL, req, TRUE);
+	g_string_free(url, TRUE);
+	return c;
+}
+
 static void 
 slack_next_connection(SlackAccount *sa)
 {

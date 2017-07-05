@@ -17,6 +17,12 @@ typedef struct _SlackChannel
 	guint typeflag;
 } SlackChannel;
 
+struct slack_channel {
+	gchar *name;
+	gboolean is_archived;
+	gboolean is_member;
+};
+
 // on slack login
 void 
 slack_chat_login(PurpleAccount * account);

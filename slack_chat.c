@@ -14,7 +14,7 @@
 static void 
 slack_check_state(SlackAccount *sa);
 
-gboolean
+static gboolean
 slack_rtm_poll(gpointer userdata)
 {
 	SlackWSConnection *slackcon = userdata;
@@ -28,15 +28,16 @@ slack_rtm_poll(gpointer userdata)
 	{
 		purple_debug_info(PROTOCOL_CODE, "Get text: %s\n", val.data);
 
-		/*
 		int len = strlen(val.data);
 		json_value* json = json_parse(val.data, len);
+		json_value* type = json ? json_get_value(json, "type") : NULL;	
 		
-		if (json == NULL)
-		{
-			json_value* type = json_get_value(json, "type");	
+		if (type && type->type == json_string) {
+			if (!strcmp("hello", type->u.str.ptr)) {
+				purple_connection_set_state(sa->pc, PURPLE_CONNECTED);
+				slack_get_channels(sa);
+			}
 		}
-		*/
 	}
 
 	g_free(val.data);
@@ -192,7 +193,7 @@ slack_check_state(SlackAccount *sa)
 }
 
 static void
-slack_send_im_cb(
+slack_post_message_cb(
 		G_GNUC_UNUSED SlackAccount *sa, 
 		json_value *obj, 
 		G_GNUC_UNUSED gpointer user_data
@@ -208,35 +209,46 @@ slack_send_im_cb(
 	json_value_free(obj);
 }
 
-gint 
-slack_send_im(
-		PurpleConnection *pc, 
-		const gchar *who, 
-		const gchar *msg,
+static gint 
+slack_post_message(
+		SlackAccount *sa, 
+		const gchar *channel, 
+		const gchar *text,
 		G_GNUC_UNUSED PurpleMessageFlags flags
 )
 {
-	SlackAccount *sa = pc->proto_data;
 	GString *url = g_string_new("/api/chat.postMessage?");
 
 	g_string_append_printf(url, "token=%s&", purple_url_encode(sa->token));
-	g_string_append_printf(url, "channel=%s&", purple_url_encode(who));
+	g_string_append_printf(url, "channel=%s&", purple_url_encode(channel));
 	g_string_append(url, "as_user=true&");
-	g_string_append_printf(url, "text=%s", purple_url_encode(msg));
+	g_string_append_printf(url, "text=%s", purple_url_encode(text));
 
 	get_or_post_request(
 			sa, 
-			SLACK_METHOD_GET | SLACK_METHOD_SSL, 
+			SLACK_METHOD_POST | SLACK_METHOD_SSL, 
 			NULL, 
 			url->str, 
 			NULL, 
-			slack_send_im_cb, 
+			slack_post_message_cb, 
 			NULL, 
 			TRUE
 	);
 
 	g_string_free(url, TRUE);
 	return 1;
+}
+
+gint 
+slack_send_im(
+		PurpleConnection *pc, 
+		const gchar *who, 
+		const gchar *msg,
+		G_GNUC_UNUSED PurpleMessageFlags flags)
+{
+	SlackAccount *sa = pc->proto_data;
+
+	return slack_post_message(sa, who, msg, flags);
 }
 
 static void
@@ -322,9 +334,6 @@ slack_rtm_request_cb(
 		G_GNUC_UNUSED gpointer user_data
 )
 {
-	json_value *ok = json_get_value(obj, "ok");
-	if (ok->u.boolean)
-	{
 		json_value *url = json_get_value(obj, "url");
 		gchar *rtm_url = remove_char(url->u.str.ptr, '\\');
 
@@ -337,7 +346,7 @@ slack_rtm_request_cb(
 
 		g_free(rtm_url);
 		g_free(host);
-	}
+
 }
 
 static void
@@ -345,20 +354,15 @@ slack_rtm_request(
 		SlackAccount *sa
 )
 {
-	GString *url = g_string_new("/api/rtm.start?");
-	g_string_append_printf(url, "token=%s", purple_url_encode(sa->token));
-
-	get_or_post_request(
+	slack_api_request(
 			sa, 
-			SLACK_METHOD_GET | SLACK_METHOD_SSL, 
-			NULL, 
-			url->str, 
+			SLACK_METHOD_GET, 
+			"rtm.connect",
+			NULL,
 			NULL, 
 			slack_rtm_request_cb, 
-			NULL, 
-			TRUE
+			NULL
 	);
-	g_string_free(url, TRUE);
 
 }
 
@@ -369,11 +373,30 @@ slack_read_channels_cb(
 		G_GNUC_UNUSED gpointer user_data
 )
 {
-	json_value *ok = json_get_value(obj, "ok");
-	if (ok->u.boolean)
+	json_value *channels = json_get_value(obj, "channels");
+	int length = channels && channels->type == json_array && channels->u.array.length;
+
+	for (int i = 0; i < length; i++)
 	{
-		json_value *channels = json_get_value(obj, "channels");
-		int length = channels->u.array.length;
+		json_value *channel = channels->u.array.values[i];
+		if (!channel)
+			continue;
+		json_value *id = json_get_value(channel, "id");
+		if (!id || id->type != json_string)
+			continue;
+
+		struct slack_channel *ch = g_new0(struct slack_channel, 1);
+		json_value *name = json_get_value(channel, "name");
+		ch->name = name && name->type == json_string ? g_strdup(name->u.str.ptr) : NULL;
+		json_value *is_archived = json_get_value(channel, "is_archived");
+		ch->is_archived = is_archived && is_archived->type == json_boolean && is_archived->u.boolean;
+		json_value *is_member = json_get_value(channel, "is_member");
+		ch->is_member = is_member && is_member->type == json_boolean && is_member->u.boolean;
+
+		g_hash_table_insert(sa->channel, g_strdup(id->u.str.ptr), ch);
+	}
+
+
 		PurpleGroup *group = NULL;
 		PurpleBuddy *buddy;
 		SlackBuddy *sbuddy;
@@ -438,7 +461,6 @@ slack_read_channels_cb(
 
 			sa->channels = g_slist_append(sa->channels, ch);
 		}
-	}
 
 	json_value_free(obj);
 
@@ -448,7 +470,15 @@ slack_read_channels_cb(
 void
 slack_get_channels(SlackAccount* sa) 
 {
+	slack_api_request(sa,
+			SLACK_METHOD_GET,
+			"channels.list",
+			NULL,
+			NULL,
+			slack_read_channels_cb,
+			NULL);
 
+	/*
 	GString *url = g_string_new("/api/channels.list?");
 	g_string_append_printf(url, "token=%s", purple_url_encode(sa->token));
 
@@ -464,7 +494,6 @@ slack_get_channels(SlackAccount* sa)
 	);
 	g_string_free(url, TRUE);
 
-	/*
 	url = g_string_new("/api/channels.list?"); // /api/users.list?
 	g_string_append_printf(url, "token=%s", purple_url_encode(sa->token));
 
@@ -482,6 +511,12 @@ slack_get_channels(SlackAccount* sa)
 	);
 	g_string_free(url, TRUE);
 	*/
+}
+
+static void
+slack_channel_free(struct slack_channel *ch) {
+	g_free(ch->name);
+	g_free(ch);
 }
 
 void 
@@ -514,7 +549,6 @@ slack_chat_login(PurpleAccount * account)
 	sa->pc = gc;
 	sa->cookie_table = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	sa->token = g_strdup(slack_token);
-	sa->channels = NULL;
 
 	sa->hostname_ip_cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	//sa->sent_messages_hash = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
@@ -522,7 +556,9 @@ slack_chat_login(PurpleAccount * account)
 	sa->rtm = NULL;
 	//sa->last_message_timestamp = purple_account_get_int(sa->account, "last_message_timestamp", 0);
 
-	const char *username = purple_account_get_username(account);
+	sa->channel = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_channel_free);
+
+	// const char *username = purple_account_get_username(account);
 	
 	purple_connection_set_state(gc, PURPLE_CONNECTING);
 	purple_connection_update_progress(gc, _("Logging in"), 1, 4);
@@ -537,9 +573,7 @@ slack_chat_login(PurpleAccount * account)
 			    "me &lt;action to perform&gt;:  Perform an action.",
 			    conn);
 	*/
-	purple_connection_set_state(gc, PURPLE_CONNECTED);
-
-	slack_get_channels(sa);
+	slack_rtm_request(sa);
 }
 
 void 
