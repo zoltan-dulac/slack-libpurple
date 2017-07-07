@@ -1,4 +1,6 @@
+#include <endian.h>
 #include <errno.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -8,9 +10,22 @@
 #include "purple-websocket.h"
 
 static const char WS_SALT[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+#define WS_FIN  0x80
+#define WS_RSV1 0x40
+#define WS_RSV2 0x20
+#define WS_RSV3 0x10
+#define WS_OP_MASK 0x0F
+#define WS_OP_CONT 0x00
+#define WS_OP_TEXT 0x01
+#define WS_OP_BIN  0x02
+#define WS_OP_CLOS 0x08
+#define WS_OP_PING 0x09
+#define WS_OP_PONG 0x0A
+#define WS_MASK	0x80
+#define MAX_FRAG 64
 
 struct buffer {
-	char *buf;
+	guchar *buf;
 	gsize off; /* next byte to read/write to */
 	gsize len; /* (expected) size of data in buffer */
 	gsize siz; /* allocated size of buffer */
@@ -31,17 +46,26 @@ struct _PurpleWebsocket {
 	struct buffer input, output;
 
 	gboolean connected;
+	PurpleInputCondition closed;
 };
 
-static void buffer_alloc(struct buffer *b, size_t n) {
+static void buffer_set_len(struct buffer *b, size_t n) {
 	if (n > b->siz) {
 		b->buf = g_realloc(b->buf, n);
 		b->siz = n;
 	}
+	b->len = n;
 }
 
-static void
-purple_websocket_cancel(PurpleWebsocket *ws) {
+static inline guchar *buffer_incr(struct buffer *b, size_t n) {
+	guchar *p = &b->buf[b->len];
+	buffer_set_len(b, b->len + n);
+	return p;
+}
+
+#define BUFFER_ADD(B, T, V) (*(T*)buffer_incr((B), sizeof(T)) = (V))
+
+void purple_websocket_abort(PurpleWebsocket *ws) {
 	if (ws->ssl_connection != NULL)
 		purple_ssl_close(ws->ssl_connection);
 
@@ -62,8 +86,8 @@ purple_websocket_cancel(PurpleWebsocket *ws) {
 }
 
 static void ws_error(PurpleWebsocket *ws, const char *error) {
-	ws->callback(ws, ws->user_data, error);
-	purple_websocket_cancel(ws);
+	ws->callback(ws, ws->user_data, PURPLE_WEBSOCKET_ERROR, (const guchar *)error, strlen(error));
+	purple_websocket_abort(ws);
 }
 
 static const char *skip_lws(const char *s) {
@@ -100,7 +124,7 @@ static const char *find_header_content(const char *data, const char *name) {
 	return NULL;
 }
 
-static void ws_headers(PurpleWebsocket *ws, const char *headers) {
+static gboolean ws_read_headers(PurpleWebsocket *ws, const char *headers) {
 	const char *upgrade = skip_lws(find_header_content(headers, "Upgrade"));
 	if (upgrade && (!g_ascii_strncasecmp(upgrade, "websocket", 9) || skip_lws(upgrade+9)))
 		upgrade = NULL;
@@ -131,19 +155,100 @@ static void ws_headers(PurpleWebsocket *ws, const char *headers) {
 
 	if (strncmp(headers, "HTTP/1.1 101 ", 13) || !upgrade || !connection || !accept) {
 		ws_error(ws, headers);
-		return;
+		return FALSE;
 	}
 
 	ws->connected = TRUE;
-	ws->callback(ws, ws->user_data, NULL);
+	ws->callback(ws, ws->user_data, PURPLE_WEBSOCKET_OPEN, NULL, 0);
+	return TRUE;
+}
+
+static size_t ws_read_message(PurpleWebsocket *ws) {
+	uint8_t *input = ws->input.buf;
+	size_t len = ws->input.off;
+	size_t off = 0;
+	struct {
+		guchar *p;
+		size_t l;
+	} frag[MAX_FRAG];
+	unsigned fi;
+
+	for (fi = 0; fi < MAX_FRAG; fi ++) {
+		if (len-off < 2)
+			return off+2;
+		uint8_t header = input[off++];
+		if (header & ~(WS_OP_MASK|WS_FIN)) {
+			ws_error(ws, "Unsupported RSV flag");
+			return 0;
+		}
+		uint8_t mlen = input[off++];
+		if (mlen & WS_MASK) {
+			ws_error(ws, "Masked frame");
+			return 0;
+		}
+		uint64_t plen = mlen & ~WS_MASK;
+		switch (plen) {
+			case 127:
+				if (len-off < 8)
+					return off+8;
+				plen = be64toh(*(uint64_t*)&input[off+=8]);
+				break;
+			case 126:
+				if (len-off < 2)
+					return off+2;
+				plen = be16toh(*(uint16_t*)&input[off+=2]);
+				break;
+		}
+		if (len-off < plen)
+			return off+plen;
+		frag[fi].l = plen;
+		frag[fi].p = &input[off+=plen];
+
+		if (header & WS_FIN) {
+			/* consolidate all the fragments after the first */
+			unsigned i;
+			for (i = 1; i <= fi; i++) {
+				memmove(&frag[0].p[frag[0].l], frag[i].p, frag[i].l);
+				frag[0].l += frag[i].l;
+			}
+
+			uint8_t op = input[0] & WS_OP_MASK;
+			switch (op) {
+				case WS_OP_TEXT:
+				case WS_OP_BIN:
+				case WS_OP_PONG:
+				case WS_OP_CLOS:
+					ws->callback(ws, ws->user_data, (PurpleWebsocketOp)op, frag[0].p, frag[0].l);
+					if (op == WS_OP_CLOS) {
+						ws->closed |= PURPLE_INPUT_READ;
+						if (ws->closed & PURPLE_INPUT_WRITE) {
+							purple_websocket_abort(ws);
+							return 0;
+						} else
+							purple_websocket_send(ws, PURPLE_WEBSOCKET_CLOSE, NULL, 0);
+					}
+					break;
+				case WS_OP_PING:
+					purple_websocket_send(ws, PURPLE_WEBSOCKET_PONG, NULL, 0);
+					break;
+				default:
+					ws_error(ws, "Unknown frame op");
+			}
+			return off;
+		}
+	}
+
+	ws_error(ws, "Maximum fragment count exceeded");
+	return 0;
 }
 
 static void ws_input_cb(gpointer data, gint source, PurpleInputCondition cond);
 
-static void ws_next(PurpleWebsocket *ws) {
-	if (ws->inpa)
+static void ws_input(PurpleWebsocket *ws) {
+	if (ws->inpa) {
 		purple_input_remove(ws->inpa);
-	ws->inpa = 0;
+		ws->inpa = 0;
+	}
 
 	if (ws->output.off) {
 		/* always none left in practice: */
@@ -151,9 +256,15 @@ static void ws_next(PurpleWebsocket *ws) {
 		ws->output.off = 0;
 	}
 
-	PurpleInputCondition cond
-		= (ws->ssl_connection ? 0 : PURPLE_INPUT_READ) /* permanent purple_ssl_input_add for ssl */
-		| (ws->output.len ? PURPLE_INPUT_WRITE : 0);
+	PurpleInputCondition cond = (ws->ssl_connection ? 0 : PURPLE_INPUT_READ); /* permanent purple_ssl_input_add for ssl */
+
+	if (ws->output.len)
+		cond |= PURPLE_INPUT_WRITE;
+	else if (ws->closed & PURPLE_INPUT_READ) {
+		purple_websocket_abort(ws);
+		return;
+	}
+
 	if (cond)
 		ws->inpa = purple_input_add(ws->fd, cond, ws_input_cb, ws);
 }
@@ -162,11 +273,9 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 	PurpleWebsocket *ws = data;
 
 	if (cond & PURPLE_INPUT_WRITE) {
-		int len;
-		if (ws->ssl_connection)
-			len = purple_ssl_write(ws->ssl_connection, ws->output.buf + ws->output.off, ws->output.len - ws->output.off);
-		else
-			len = write(ws->fd, ws->output.buf + ws->output.off, ws->output.len - ws->output.off);
+		ssize_t len = ws->ssl_connection
+			? (ssize_t)purple_ssl_write(ws->ssl_connection, ws->output.buf + ws->output.off, ws->output.len - ws->output.off)
+			: write(ws->fd, ws->output.buf + ws->output.off, ws->output.len - ws->output.off);
 
 		if (len < 0) {
 			if (errno != EAGAIN) {
@@ -174,15 +283,13 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 				return;
 			}
 		} else if ((ws->output.off += len) >= ws->output.len)
-			ws_next(ws);
+			ws_input(ws);
 	}
 
 	if (cond & PURPLE_INPUT_READ) {
-		int len;
-		if (ws->ssl_connection)
-			len = purple_ssl_read(ws->ssl_connection, ws->input.buf + ws->input.off, ws->input.len - ws->input.off);
-		else
-			len = read(ws->fd, ws->input.buf + ws->input.off, ws->input.len - ws->input.off);
+		ssize_t len = ws->ssl_connection
+			? (ssize_t)purple_ssl_read(ws->ssl_connection, ws->input.buf + ws->input.off, ws->input.len - ws->input.off)
+			: read(ws->fd, ws->input.buf + ws->input.off, ws->input.len - ws->input.off);
 
 		if (len < 0) {
 			if (errno != EAGAIN) {
@@ -198,26 +305,77 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 
 			if (!ws->connected) {
 				/* search for the end of headers in the new block (backing up 4-1) */
-				char *eoh = g_strstr_len(ws->input.buf + ws->input.off - len - 3, len + 3, "\r\n\r\n");
+				char *resp = (char *)ws->input.buf;
+				char *eoh = g_strstr_len(resp + ws->input.off - len - 3, len + 3, "\r\n\r\n");
 
 				if (eoh) {
 					/* got all the headers now */
 					*eoh = '\0';
 					eoh += 4;
-					ws_headers(ws, ws->input.buf);
+					if (!ws_read_headers(ws, resp))
+						return;
 
-					memmove(ws->input.buf, eoh, ws->input.off -= eoh - ws->input.buf);
-					/* TODO next */
+					memmove(ws->input.buf, eoh, ws->input.off -= eoh - resp);
+					ws->input.len = 2;
 				}
 				else if (ws->input.off >= ws->input.len) {
 					ws_error(ws, "Response headers too long");
 					return;
 				}
-			} else if (ws->input.off >= ws->input.len) {
-				/* TODO */
+				else
+					return;
+			}
+			
+			while (ws->input.off >= ws->input.len) {
+				size_t r = ws_read_message(ws);
+				if (!r) /* error */
+					return;
+				else if (r > ws->input.off) {
+					/* need more */
+					buffer_set_len(&ws->input, r);
+				} else {
+					/* consumed some */
+					memmove(ws->input.buf, ws->input.buf + r, ws->input.off -= r);
+					ws->input.len = 2;
+				}
 			}
 		}
 	}
+}
+
+void purple_websocket_send(PurpleWebsocket *ws, PurpleWebsocketOp op, const guchar *msg, size_t len) {
+	g_return_if_fail(ws->connected && !(ws->closed & PURPLE_INPUT_WRITE));
+	g_return_if_fail(op & ~WS_OP_MASK);
+	gboolean buf = ws->output.len;
+
+#define ADD(T, V) BUFFER_ADD(&ws->output, T, V)
+
+	ADD(uint8_t, WS_FIN | op);
+	if (len > UINT16_MAX) {
+		ADD(uint8_t, WS_MASK | 127);
+		ADD(uint64_t, htobe64(len));
+	} else if (len >= 126) {
+		ADD(uint8_t, WS_MASK | 126);
+		ADD(uint16_t, htobe16(len));
+	} else {
+		ADD(uint8_t, WS_MASK | len);
+	}
+
+	uint32_t mask = g_random_int();
+	ADD(uint32_t, mask);
+
+#undef ADD
+
+	guchar *p = buffer_incr(&ws->output, len);
+	size_t i;
+	for (i = 0; i < len; i++)
+		p[i] = msg[i] ^ ((uint8_t*)&mask)[i&3];
+
+	if (op == PURPLE_WEBSOCKET_CLOSE)
+		ws->closed |= PURPLE_INPUT_WRITE;
+
+	if (!buf)
+		ws_input(ws);
 }
 
 static void wss_input_cb(gpointer data, G_GNUC_UNUSED PurpleSslConnection *ssl_connection, PurpleInputCondition cond)
@@ -232,7 +390,7 @@ static void wss_connect_cb(gpointer data, PurpleSslConnection *ssl_connection, G
 	ws->fd = ssl_connection->fd;
 	purple_ssl_input_add(ws->ssl_connection, wss_input_cb, ws);
 
-	ws_next(ws);
+	ws_input(ws);
 	ws_input_cb(ws, ws->fd, PURPLE_INPUT_WRITE);
 }
 
@@ -253,12 +411,11 @@ static void ws_connect_cb(gpointer data, gint source, const gchar *error_message
 
 	ws->fd = source;
 
-	ws_next(ws);
+	ws_input(ws);
 	ws_input_cb(ws, ws->fd, PURPLE_INPUT_WRITE);
 }
 
-PurpleWebsocket *
-purple_websocket_connect(PurpleAccount *account,
+PurpleWebsocket *purple_websocket_connect(PurpleAccount *account,
 		const char *url, const char *protocol,
 		PurpleWebsocketCallback callback, void *user_data) {
 	gboolean ssl = FALSE;
@@ -311,11 +468,10 @@ Sec-WebSocket-Version: 13\r\n", path, host, ws->key);
 
 		ws->output.len = request->len;
 		ws->output.siz = request->allocated_len;
-		ws->output.buf = g_string_free(request, FALSE);
+		ws->output.buf = (guchar *)g_string_free(request, FALSE);
 
 		/* allocate space for responses (headers) */
-		buffer_alloc(&ws->input, 4096);
-		ws->input.len = ws->input.siz;
+		buffer_set_len(&ws->input, 4096);
 
 		if (ssl)
 			ws->ssl_connection = purple_ssl_connect(account, host, port,

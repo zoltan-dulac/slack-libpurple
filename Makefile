@@ -22,6 +22,7 @@ CFLAGS = \
     -Wall \
     -Wextra \
     -fPIC \
+    -D_DEFAULT_SOURCE=1 \
     -DPURPLE_PLUGINS \
     -DPIC -DENABLE_NLS \
     -std=c99 \
