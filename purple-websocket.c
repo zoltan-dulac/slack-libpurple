@@ -9,22 +9,36 @@
 
 static const char WS_SALT[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-struct _PurpleWebsocket {
-	PurpleWebsocketConnectCallback connect_cb;
-	void *user_data;
+struct buffer {
+	char *buf;
+	gsize off; /* next byte to read/write to */
+	gsize len; /* (expected) size of data in buffer */
+	gsize siz; /* allocated size of buffer */
+};
 
-	/* non-ssl: */
-	PurpleProxyConnectData *connection;
-	int fd;
-	/* ssl: */
-	PurpleSslConnection *ssl_connection;
-	guint inpa;
+struct _PurpleWebsocket {
+	PurpleWebsocketCallback callback;
+	void *user_data;
 
 	char *key;
 
-	char *buffer;
-	gsize buffer_off, buffer_len;
+	PurpleProxyConnectData *connection;
+	PurpleSslConnection *ssl_connection;
+
+	int fd;
+	guint inpa;
+
+	struct buffer input, output;
+
+	gboolean connected;
 };
+
+static void buffer_alloc(struct buffer *b, size_t n) {
+	if (n > b->siz) {
+		b->buf = g_realloc(b->buf, n);
+		b->siz = n;
+	}
+}
 
 static void
 purple_websocket_cancel(PurpleWebsocket *ws) {
@@ -41,36 +55,35 @@ purple_websocket_cancel(PurpleWebsocket *ws) {
 		close(ws->fd);
 
 	g_free(ws->key);
-	g_free(ws->buffer);
+	g_free(ws->output.buf);
+	g_free(ws->input.buf);
 
 	g_free(ws);
 }
 
-static void ws_connect_error(PurpleWebsocket *ws, const char *error) {
-	ws->connect_cb(ws, ws->user_data, error);
+static void ws_error(PurpleWebsocket *ws, const char *error) {
+	ws->callback(ws, ws->user_data, error);
 	purple_websocket_cancel(ws);
-}
-
-static void wss_error_cb(G_GNUC_UNUSED PurpleSslConnection *ssl_connection, PurpleSslErrorType error, gpointer data) {
-	PurpleWebsocket *ws = data;
-
-	ws->ssl_connection = NULL;
-
-	ws_connect_error(ws, purple_ssl_strerror(error));
 }
 
 static const char *skip_lws(const char *s) {
 	while (s) {
-		while (*s == ' ' || *s == '\t')
-			s ++;
-		if (s[0] == '\r' && s[1] == '\n') {
-			s += 2;
-			if (*s == ' ' || *s == '\t')
-				s ++;
-			else
-				s = NULL;
-		} else
-			break;
+		switch (*s) {
+			case ' ':
+			case '\t':
+				s++;
+				break;
+			case '\r':
+				if (s[1] == '\n' && (s[2] == ' ' || s[2] == '\t')) {
+					s += 3;
+					break;
+				}
+			case '\n':
+			case '\0':
+				return NULL;
+			default:
+				return s;
+		}
 	}
 	return s;
 }
@@ -87,50 +100,12 @@ static const char *find_header_content(const char *data, const char *name) {
 	return NULL;
 }
 
-static void ws_connect_recv_cb(gpointer data, G_GNUC_UNUSED gint source, G_GNUC_UNUSED PurpleInputCondition cond) {
-	PurpleWebsocket *ws = data;
-	char *eoh = NULL;
-
-	do {
-		if (ws->buffer_off >= ws->buffer_len) {
-			if (ws->buffer_len >= 4096) {
-				ws_connect_error(ws, "Response headers too long");
-				return;
-			}
-			ws->buffer = g_realloc(ws->buffer, ws->buffer_len *= 2);
-		}
-
-		int len;
-		if (ws->ssl_connection)
-			len = purple_ssl_read(ws->ssl_connection, ws->buffer + ws->buffer_off, ws->buffer_len - ws->buffer_off);
-		else
-			len = read(ws->fd, ws->buffer + ws->buffer_off, ws->buffer_len - ws->buffer_off);
-
-		if (len < 0) {
-			if (errno != EAGAIN)
-				ws_connect_error(ws, g_strerror(errno));
-			return;
-		}
-
-		if (len == 0) {
-			ws_connect_error(ws, "Connection closed reading response");
-			return;
-		}
-
-		/* search for the end of headers in the new block, backing up 4-1 */
-		eoh = g_strstr_len(ws->buffer + ws->buffer_off - 3, len + 3, "\r\n\r\n");
-		ws->buffer_off += len;
-	} while (!eoh);
-
-	/* got all the headers now */
-	*eoh = '\0';
-	eoh += 4;
-
-	const char *upgrade = skip_lws(find_header_content(ws->buffer, "Upgrade"));
+static void ws_headers(PurpleWebsocket *ws, const char *headers) {
+	const char *upgrade = skip_lws(find_header_content(headers, "Upgrade"));
 	if (upgrade && (!g_ascii_strncasecmp(upgrade, "websocket", 9) || skip_lws(upgrade+9)))
 		upgrade = NULL;
 
-	const char *connection = find_header_content(ws->buffer, "Connection");
+	const char *connection = find_header_content(headers, "Connection");
 	while (connection && g_ascii_strncasecmp(connection, "Upgrade", 7))
 		while ((connection = skip_lws(connection)) && *connection++ != ',');
 	if (connection) {
@@ -139,7 +114,7 @@ static void ws_connect_recv_cb(gpointer data, G_GNUC_UNUSED gint source, G_GNUC_
 			connection = NULL;
 	}
 
-	const char *accept = skip_lws(find_header_content(ws->buffer, "Sec-WebSocket-Accept"));
+	const char *accept = skip_lws(find_header_content(headers, "Sec-WebSocket-Accept"));
 	if (accept) {
 		char *k = g_strjoin(NULL, ws->key, WS_SALT, NULL);
 		size_t l = 20;
@@ -154,61 +129,117 @@ static void ws_connect_recv_cb(gpointer data, G_GNUC_UNUSED gint source, G_GNUC_
 
 	/* TODO: Sec-WebSocket-Extensions, Sec-WebSocket-Protocol */
 
-	if (strncmp(ws->buffer, "HTTP/1.1 101 ", 13) || !upgrade || !connection || !accept) {
-		ws_connect_error(ws, ws->buffer);
+	if (strncmp(headers, "HTTP/1.1 101 ", 13) || !upgrade || !connection || !accept) {
+		ws_error(ws, headers);
 		return;
 	}
 
-	memmove(ws->buffer, eoh, ws->buffer_off -= eoh - ws->buffer);
-
-	ws->connect_cb(ws, ws->user_data, NULL);
-	/* go! */
+	ws->connected = TRUE;
+	ws->callback(ws, ws->user_data, NULL);
 }
 
-static void wss_connect_recv_cb(gpointer data, G_GNUC_UNUSED PurpleSslConnection *ssl_connection, PurpleInputCondition cond)
-{
-	ws_connect_recv_cb(data, -1, cond);
+static void ws_input_cb(gpointer data, gint source, PurpleInputCondition cond);
+
+static void ws_next(PurpleWebsocket *ws) {
+	if (ws->inpa)
+		purple_input_remove(ws->inpa);
+	ws->inpa = 0;
+
+	if (ws->output.off) {
+		/* always none left in practice: */
+		memmove(ws->output.buf, ws->output.buf + ws->output.off, ws->output.len -= ws->output.off);
+		ws->output.off = 0;
+	}
+
+	PurpleInputCondition cond
+		= (ws->ssl_connection ? 0 : PURPLE_INPUT_READ) /* permanent purple_ssl_input_add for ssl */
+		| (ws->output.len ? PURPLE_INPUT_WRITE : 0);
+	if (cond)
+		ws->inpa = purple_input_add(ws->fd, cond, ws_input_cb, ws);
 }
 
-
-static void ws_connect_send_cb(gpointer data, G_GNUC_UNUSED gint source, G_GNUC_UNUSED PurpleInputCondition cond) {
+static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCondition cond) {
 	PurpleWebsocket *ws = data;
 
-	int len;
-	if (ws->ssl_connection)
-		len = purple_ssl_write(ws->ssl_connection, ws->buffer + ws->buffer_off,
-				ws->buffer_len - ws->buffer_off);
-	else
-		len = write(ws->fd, ws->buffer + ws->buffer_off,
-				ws->buffer_len - ws->buffer_off);
+	if (cond & PURPLE_INPUT_WRITE) {
+		int len;
+		if (ws->ssl_connection)
+			len = purple_ssl_write(ws->ssl_connection, ws->output.buf + ws->output.off, ws->output.len - ws->output.off);
+		else
+			len = write(ws->fd, ws->output.buf + ws->output.off, ws->output.len - ws->output.off);
 
-	if (len < 0) {
-		if (errno != EAGAIN)
-			ws_connect_error(ws, g_strerror(errno));
-		return;
+		if (len < 0) {
+			if (errno != EAGAIN) {
+				ws_error(ws, g_strerror(errno));
+				return;
+			}
+		} else if ((ws->output.off += len) >= ws->output.len)
+			ws_next(ws);
 	}
 
-	ws->buffer_off += len;
-	if (ws->buffer_off < ws->buffer_len)
-		return;
+	if (cond & PURPLE_INPUT_READ) {
+		int len;
+		if (ws->ssl_connection)
+			len = purple_ssl_read(ws->ssl_connection, ws->input.buf + ws->input.off, ws->input.len - ws->input.off);
+		else
+			len = read(ws->fd, ws->input.buf + ws->input.off, ws->input.len - ws->input.off);
 
-	/* We're done writing our request, now start reading the response */
-	purple_input_remove(ws->inpa);
-	ws->buffer_off = 0;
-	if (ws->ssl_connection) {
-		ws->inpa = 0;
-		purple_ssl_input_add(ws->ssl_connection, wss_connect_recv_cb, ws);
-	} else {
-		ws->inpa = purple_input_add(ws->fd, PURPLE_INPUT_READ, ws_connect_recv_cb, ws);
+		if (len < 0) {
+			if (errno != EAGAIN) {
+				ws_error(ws, g_strerror(errno));
+				return;
+			}
+		}
+		else if (len == 0) {
+			ws_error(ws, "Connection closed");
+			return;
+		} else {
+			ws->input.off += len;
+
+			if (!ws->connected) {
+				/* search for the end of headers in the new block (backing up 4-1) */
+				char *eoh = g_strstr_len(ws->input.buf + ws->input.off - len - 3, len + 3, "\r\n\r\n");
+
+				if (eoh) {
+					/* got all the headers now */
+					*eoh = '\0';
+					eoh += 4;
+					ws_headers(ws, ws->input.buf);
+
+					memmove(ws->input.buf, eoh, ws->input.off -= eoh - ws->input.buf);
+					/* TODO next */
+				}
+				else if (ws->input.off >= ws->input.len) {
+					ws_error(ws, "Response headers too long");
+					return;
+				}
+			} else if (ws->input.off >= ws->input.len) {
+				/* TODO */
+			}
+		}
 	}
+}
+
+static void wss_input_cb(gpointer data, G_GNUC_UNUSED PurpleSslConnection *ssl_connection, PurpleInputCondition cond)
+{
+	PurpleWebsocket *ws = data;
+	ws_input_cb(data, ws->fd, cond);
 }
 
 static void wss_connect_cb(gpointer data, PurpleSslConnection *ssl_connection, G_GNUC_UNUSED PurpleInputCondition cond) {
 	PurpleWebsocket *ws = data;
 
-	ws->inpa = purple_input_add(ssl_connection->fd, PURPLE_INPUT_WRITE,
-			ws_connect_send_cb, ws);
-	ws_connect_send_cb(ws, ssl_connection->fd, PURPLE_INPUT_WRITE);
+	ws->fd = ssl_connection->fd;
+	purple_ssl_input_add(ws->ssl_connection, wss_input_cb, ws);
+
+	ws_next(ws);
+	ws_input_cb(ws, ws->fd, PURPLE_INPUT_WRITE);
+}
+
+static void wss_error_cb(G_GNUC_UNUSED PurpleSslConnection *ssl_connection, PurpleSslErrorType error, gpointer data) {
+	PurpleWebsocket *ws = data;
+	ws->ssl_connection = NULL;
+	ws_error(ws, purple_ssl_strerror(error));
 }
 
 static void ws_connect_cb(gpointer data, gint source, const gchar *error_message) {
@@ -216,21 +247,20 @@ static void ws_connect_cb(gpointer data, gint source, const gchar *error_message
 	ws->connection = NULL;
 
 	if (source == -1) {
-		ws_connect_error(ws, error_message ?: "Unable to connect to websocket");
+		ws_error(ws, error_message ?: "Unable to connect to websocket");
 		return;
 	}
 
 	ws->fd = source;
 
-	ws->inpa = purple_input_add(source, PURPLE_INPUT_WRITE,
-			ws_connect_send_cb, ws);
-	ws_connect_send_cb(ws, source, PURPLE_INPUT_WRITE);
+	ws_next(ws);
+	ws_input_cb(ws, ws->fd, PURPLE_INPUT_WRITE);
 }
 
 PurpleWebsocket *
 purple_websocket_connect(PurpleAccount *account,
 		const char *url, const char *protocol,
-		PurpleWebsocketConnectCallback connect_cb, void *user_data) {
+		PurpleWebsocketCallback callback, void *user_data) {
 	gboolean ssl = FALSE;
 
 	if (!g_ascii_strcasecmp(url, "ws://")) {
@@ -251,7 +281,7 @@ purple_websocket_connect(PurpleAccount *account,
 	}
 
 	PurpleWebsocket *ws = g_new0(PurpleWebsocket, 1);
-	ws->connect_cb = connect_cb;
+	ws->callback = callback;
 	ws->user_data = user_data;
 	ws->fd = -1;
 
@@ -279,8 +309,13 @@ Sec-WebSocket-Version: 13\r\n", path, host, ws->key);
 			g_string_append_printf(request, "Sec-WebSocket-Protocol: %s\r\n", protocol);
 		g_string_append(request, "\r\n");
 
-		ws->buffer_len = request->len;
-		ws->buffer = g_string_free(request, FALSE);
+		ws->output.len = request->len;
+		ws->output.siz = request->allocated_len;
+		ws->output.buf = g_string_free(request, FALSE);
+
+		/* allocate space for responses (headers) */
+		buffer_alloc(&ws->input, 4096);
+		ws->input.len = ws->input.siz;
 
 		if (ssl)
 			ws->ssl_connection = purple_ssl_connect(account, host, port,
@@ -291,7 +326,7 @@ Sec-WebSocket-Version: 13\r\n", path, host, ws->key);
 	}
 
 	if (!(ws->ssl_connection || ws->connection)) {
-		ws_connect_error(ws, "Unable to connect to websocket");
+		ws_error(ws, "Unable to connect to websocket");
 		return NULL;
 	}
 

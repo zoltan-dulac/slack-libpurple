@@ -5,6 +5,6 @@
 
 typedef struct _PurpleWebsocket PurpleWebsocket;
 
-typedef void (*PurpleWebsocketConnectCallback)(PurpleWebsocket *ws, gpointer user_data, const gchar *error_message);
+typedef void (*PurpleWebsocketCallback)(PurpleWebsocket *ws, gpointer user_data, const gchar *error_message);
 
 #endif
