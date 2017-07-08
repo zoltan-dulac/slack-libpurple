@@ -8,6 +8,7 @@
 #include <plugin.h>
 #include <prpl.h>
 
+#include "purple-websocket.h"
 
 typedef struct _SlackAccount {
 	PurpleAccount *account;
@@ -22,9 +23,9 @@ typedef struct _SlackAccount {
 	GSList *dns_queries;
 	GHashTable *cookie_table;
 	GHashTable *hostname_ip_cache;
+	PurpleWebsocket *rtm;
 	GSList *conns; /**< A list of all active Connections */
 	GQueue *waiting_conns; /**< A list of all Connections waiting to process */
-	gpointer *rtm; // List of all rtm connections
 
 	GSList *channels;
 	GHashTable *channel; /* id -> slack_channel */

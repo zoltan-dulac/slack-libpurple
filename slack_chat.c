@@ -14,39 +14,6 @@
 static void 
 slack_check_state(SlackAccount *sa);
 
-static gboolean
-slack_rtm_poll(gpointer userdata)
-{
-	SlackWSConnection *slackcon = userdata;
-	SlackAccount *sa = slackcon->sa;
-
-	purple_debug_info(PROTOCOL_CODE, "Poll\n");
-
-	frame_value val = poll_frame(slackcon->socket_fd);
-
-	if (val.type == frame_text)
-	{
-		purple_debug_info(PROTOCOL_CODE, "Get text: %s\n", val.data);
-
-		int len = strlen(val.data);
-		json_value* json = json_parse(val.data, len);
-		json_value* type = json ? json_get_value(json, "type") : NULL;	
-		
-		if (type && type->type == json_string) {
-			if (!strcmp("hello", type->u.str.ptr)) {
-				purple_connection_set_state(sa->pc, PURPLE_CONNECTED);
-				slack_get_channels(sa);
-			}
-		}
-	}
-
-	g_free(val.data);
-
-	slackcon->poll_timeout = purple_timeout_add_seconds(1, slack_rtm_poll, slackcon);
-	return FALSE;
-}
-
-
 gboolean 
 slack_timeout(gpointer userdata)
 {
@@ -328,45 +295,6 @@ slack_read_users_cb(
 }
 
 static void
-slack_rtm_request_cb(
-		SlackAccount *sa, 
-		json_value *obj, 
-		G_GNUC_UNUSED gpointer user_data
-)
-{
-		json_value *url = json_get_value(obj, "url");
-		gchar *rtm_url = remove_char(url->u.str.ptr, '\\');
-
-		gchar *rtm_host_end = g_strstr_len(rtm_url+5, -1, "/");
-		gchar *host = g_strndup(rtm_url+5, (gsize)(rtm_host_end - rtm_url - 5));
-		gchar *req = g_strdup(rtm_host_end+1);
-		// TODO parse other json url and replace EventAPI
-		
-		slack_start_rtm_session(sa, slack_rtm_poll, host, 80, req);
-
-		g_free(rtm_url);
-		g_free(host);
-
-}
-
-static void
-slack_rtm_request(
-		SlackAccount *sa
-)
-{
-	slack_api_request(
-			sa, 
-			SLACK_METHOD_GET, 
-			"rtm.connect",
-			NULL,
-			NULL, 
-			slack_rtm_request_cb, 
-			NULL
-	);
-
-}
-
-static void
 slack_read_channels_cb(
 		SlackAccount *sa, 
 		json_value *obj, 
@@ -519,31 +447,103 @@ slack_channel_free(struct slack_channel *ch) {
 	g_free(ch);
 }
 
+static void
+slack_rtm_cb(G_GNUC_UNUSED PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp op, const guchar *msg, size_t len)
+{
+	SlackAccount *sa = data;
+
+	switch (op) {
+		case PURPLE_WEBSOCKET_TEXT:
+			break;
+		case PURPLE_WEBSOCKET_ERROR:
+		case PURPLE_WEBSOCKET_CLOSE:
+			purple_connection_error_reason(sa->pc,
+					PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
+					(const char *)msg);
+			sa->rtm = NULL;
+		default:
+			return;
+	}
+
+	json_value *json = json_parse((const char *)msg, len);
+	if (!json)
+	{
+		purple_connection_error_reason(sa->pc,
+				PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
+				"Could not parse RTM JSON");
+		return;
+	}
+
+	json_value *type = json_get_value(json, "type");
+	if (type->type != json_string)
+		return;
+
+	if (!strcmp("hello", type->u.str.ptr)) {
+		purple_connection_set_state(sa->pc, PURPLE_CONNECTED);
+		slack_get_channels(sa);
+	}
+}
+
+static void
+slack_rtm_request_cb(
+		SlackAccount *sa, 
+		json_value *obj, 
+		G_GNUC_UNUSED gpointer user_data
+)
+{
+	json_value *url = json_get_value(obj, "url");
+	if (!url || url->type != json_string) {
+		purple_connection_error_reason(sa->pc,
+				PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
+				"Could not get RTM URL");
+		return;
+	}
+
+	sa->rtm = purple_websocket_connect(sa->account, url->u.str.ptr, NULL, slack_rtm_cb, sa);
+}
+
+static void
+slack_rtm_request(
+		SlackAccount *sa
+)
+{
+	slack_api_request(
+			sa, 
+			SLACK_METHOD_GET, 
+			"rtm.connect",
+			NULL,
+			NULL, 
+			slack_rtm_request_cb, 
+			NULL
+	);
+}
+
 void 
 slack_chat_login(PurpleAccount * account)
 {
+	PurpleConnection *gc = purple_account_get_connection(account);
+
 	// check token - no token - no work
 	const gchar *slack_token = purple_account_get_string(account, "api_token", NULL);
 	if (!slack_token)
 	{
-		purple_debug_error(PROTOCOL_CODE, "Token required");
+		purple_connection_error_reason(gc,
+			PURPLE_CONNECTION_ERROR_INVALID_SETTINGS,
+			"Token required");
+		return;
+	}
+
+	if (!purple_ssl_is_supported()) 
+	{
+		purple_connection_error_reason(gc,
+			PURPLE_CONNECTION_ERROR_NO_SSL_SUPPORT,
+			"Server requires TLS/SSL for login.  No TLS/SSL support found.");
 		return;
 	}
 
 	// Init connection
-	PurpleConnection *gc = purple_account_get_connection(account);
 	SlackAccount* sa = g_new0(SlackAccount, 1);
-
 	gc->proto_data = sa;
-
-	if (!purple_ssl_is_supported()) 
-	{
-		purple_connection_error (
-			gc,
-			"Server requires TLS/SSL for login.  No TLS/SSL support found."
-		);
-		return;
-	}
 
 	sa->account = account;
 	sa->pc = gc;
@@ -553,7 +553,6 @@ slack_chat_login(PurpleAccount * account)
 	sa->hostname_ip_cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 	//sa->sent_messages_hash = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 	sa->waiting_conns = g_queue_new();
-	sa->rtm = NULL;
 	//sa->last_message_timestamp = purple_account_get_int(sa->account, "last_message_timestamp", 0);
 
 	sa->channel = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_channel_free);
@@ -561,10 +560,10 @@ slack_chat_login(PurpleAccount * account)
 	// const char *username = purple_account_get_username(account);
 	
 	purple_connection_set_state(gc, PURPLE_CONNECTING);
-	purple_connection_update_progress(gc, _("Logging in"), 1, 4);
+	purple_connection_update_progress(gc, _("Requesting RTM"), 1, 4);
 
 	//acc->hostname = g_strdup("necrosis");
-	purple_connection_set_display_name(gc, "necrosis");
+	//purple_connection_set_display_name(gc, "necrosis");
 
 	//purple_debug_info("slack", "hostname: %s\n", acc->hostname);
 	/*
@@ -573,6 +572,7 @@ slack_chat_login(PurpleAccount * account)
 			    "me &lt;action to perform&gt;:  Perform an action.",
 			    conn);
 	*/
+	purple_debug_info(SLACK_PLUGIN_ID, "requesting rtm url\n");
 	slack_rtm_request(sa);
 }
 
@@ -628,8 +628,7 @@ slack_chat_close(PurpleConnection *pc)
 
 
 	if (sa->rtm)
-		slack_colose_rtm_session(sa);
-
+		purple_websocket_abort(sa->rtm);
 
 	g_hash_table_destroy(sa->cookie_table);
 	g_hash_table_destroy(sa->hostname_ip_cache);
