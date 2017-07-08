@@ -43,7 +43,15 @@ static void users_list_cb(SlackAPICall *api, gpointer data, json_value *json, co
 	purple_connection_set_state(sa->gc, PURPLE_CONNECTED);
 }
 
-void slack_get_users(SlackAccount *sa) {
+void slack_users_get(SlackAccount *sa) {
 	purple_connection_update_progress(sa->gc, "Loading Users", 4, SLACK_CONNECT_STEPS);
 	slack_api_call(sa, "users.list", "presence=false", users_list_cb, sa);
+}
+
+static gboolean user_name_equal(char *id, SlackUser *user, const char *name) {
+	return !g_strcmp0(user->name, name);
+}
+
+SlackUser *slack_user_find(SlackAccount *sa, const char *name) {
+	return g_hash_table_find(sa->users, (GHRFunc)user_name_equal, (gpointer)name);
 }

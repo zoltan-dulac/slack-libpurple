@@ -9,7 +9,7 @@
 
 static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
 	if (!strcmp(type, "hello")) {
-		slack_get_users(sa);
+		slack_users_get(sa);
 	}
 	else if (!strcmp(type, "user_changed") ||
 		 !strcmp(type, "team_join")) {
