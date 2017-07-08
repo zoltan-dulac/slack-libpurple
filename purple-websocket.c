@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <cipher.h>
+#include <debug.h>
 #include <sslconn.h>
 
 #include "purple-websocket.h"
@@ -420,19 +421,19 @@ PurpleWebsocket *purple_websocket_connect(PurpleAccount *account,
 		PurpleWebsocketCallback callback, void *user_data) {
 	gboolean ssl = FALSE;
 
-	if (!g_ascii_strcasecmp(url, "ws://")) {
+	if (!g_ascii_strncasecmp(url, "ws://", 5)) {
 		ssl = FALSE;
 		url += 5;
 	}
-	else if (!g_ascii_strcasecmp(url, "wss://")) {
+	else if (!g_ascii_strncasecmp(url, "wss://", 6)) {
 		ssl = TRUE;
 		url += 6;
 	}
-	if (!g_ascii_strcasecmp(url, "http://")) {
+	else if (!g_ascii_strncasecmp(url, "http://", 7)) {
 		ssl = FALSE;
 		url += 7;
 	}
-	if (!g_ascii_strcasecmp(url, "https://")) {
+	else if (!g_ascii_strncasecmp(url, "https://", 8)) {
 		ssl = TRUE;
 		url += 8;
 	}
@@ -446,6 +447,10 @@ PurpleWebsocket *purple_websocket_connect(PurpleAccount *account,
 	int port;
 	if (!purple_url_parse(url, &host, &port, &path, NULL, NULL));
 	else {
+		/* hack to fix default port */
+		if (ssl && port == 80)
+			port = 443;
+
 		guint32 key[4] = {
 			g_random_int(),
 			g_random_int(),
@@ -479,6 +484,9 @@ Sec-WebSocket-Version: 13\r\n", path, host, ws->key);
 		else
 			ws->connection = purple_proxy_connect(NULL, account, host, port,
 					ws_connect_cb, ws);
+
+		g_free(host);
+		g_free(path);
 	}
 
 	if (!(ws->ssl_connection || ws->connection)) {

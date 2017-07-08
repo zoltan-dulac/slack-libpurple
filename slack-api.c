@@ -1,4 +1,5 @@
 #include "slack-api.h"
+#include "slack-json.h"
 
 struct _SlackAPICall {
 	SlackAccount *sa;
@@ -25,10 +26,10 @@ static void api_cb(G_GNUC_UNUSED PurpleUtilFetchUrlData *fetch, gpointer data, c
 		return;
 	}
 
-	json_value *ok = json_get_value(json, "ok");
+	json_value *ok = json_get_prop(json, "ok");
 	if (!ok || ok->type != json_boolean || !ok->u.boolean) {
-		json_value *err = json_get_value(json, "error");
-		api_error(call, err && err->type == json_string ? err->u.str.ptr : "Unknown error");
+		json_value *err = json_get_prop(json, "error");
+		api_error(call, err && err->type == json_string ? err->u.string.ptr : "Unknown error");
 	} else {
 		call->callback(call, call->user_data, json, NULL);
 	}

@@ -2,11 +2,18 @@
 #define PURPLE_PLUGINS
 #endif
 
+#include <string.h>
+
 #include <accountopt.h>
+#include <debug.h>
 #include <plugin.h>
 #include <version.h>
 
 #include "slack.h"
+#include "slack-api.h"
+#include "slack-json.h"
+
+#define CONNECT_STEPS 4
 
 static const char *slack_list_icon(G_GNUC_UNUSED PurpleAccount * account, G_GNUC_UNUSED PurpleBuddy * buddy) {
 	return "slack";
@@ -24,10 +31,96 @@ static GList *slack_status_types(G_GNUC_UNUSED PurpleAccount *acct) {
 	return types;
 }
 
+static void slack_rtm_cb(PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp op, const guchar *msg, size_t len) {
+	SlackAccount *sa = data;
+
+	switch (op) {
+		case PURPLE_WEBSOCKET_TEXT:
+			break;
+		case PURPLE_WEBSOCKET_ERROR:
+		case PURPLE_WEBSOCKET_CLOSE:
+			purple_connection_error_reason(sa->gc,
+					PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
+					(const char *)msg ?: "RTM connection closed");
+			sa->rtm = NULL;
+		case PURPLE_WEBSOCKET_OPEN:
+			purple_connection_update_progress(sa->gc, "RTM Connected", 3, CONNECT_STEPS);
+		default:
+			return;
+	}
+
+	json_value *json = json_parse((const char *)msg, len);
+	json_value *type = json_get_prop(json, "type");
+	if (!type || type->type != json_string)
+	{
+		purple_connection_error_reason(sa->gc,
+				PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
+				"Could not parse RTM JSON");
+		return;
+	}
+
+	if (!strcmp("hello", type->u.string.ptr)) {
+		purple_connection_set_state(sa->gc, PURPLE_CONNECTED);
+	}
+}
+
+static void rtm_connect_cb(SlackAPICall *api, gpointer data, json_value *json, const char *error) {
+	SlackAccount *sa = data;
+
+	json_value *url = json_get_prop(json, "url");
+	if (!url || url->type != json_string) {
+		purple_connection_error_reason(sa->gc,
+				PURPLE_CONNECTION_ERROR_NETWORK_ERROR, error ?: "Missing RTM URL");
+		return;
+	}
+
+	purple_connection_update_progress(sa->gc, "Connecting to RTM", 2, CONNECT_STEPS);
+	purple_debug_info("slack", "RTM URL: %s\n", url->u.string.ptr);
+	sa->rtm = purple_websocket_connect(sa->account, url->u.string.ptr, NULL, slack_rtm_cb, sa);
+}
+
 static void slack_login(PurpleAccount *account) {
+	PurpleConnection *gc = purple_account_get_connection(account);
+
+	const gchar *token = purple_account_get_string(account, "api_token", NULL);
+	if (!token)
+	{
+		purple_connection_error_reason(gc,
+			PURPLE_CONNECTION_ERROR_INVALID_SETTINGS, "API token required");
+		return;
+	}
+
+	SlackAccount *sa = g_new0(SlackAccount, 1);
+	gc->proto_data = sa;
+	sa->account = account;
+	sa->gc = gc;
+
+	const char *username = purple_account_get_username(account);
+	const char *host = strrchr(username, '@');
+	sa->api_url = g_strdup_printf("https://%s/api", host ? host+1 : "slack.com");
+
+	sa->token = g_strdup(purple_url_encode(token));
+
+	purple_connection_set_display_name(gc, username);
+	purple_connection_set_state(gc, PURPLE_CONNECTING);
+
+	purple_connection_update_progress(gc, "Requesting RTM", 1, CONNECT_STEPS);
+	slack_api_call(sa, "rtm.connect", NULL, rtm_connect_cb, sa);
 }
 
 static void slack_close(PurpleConnection *gc) {
+	SlackAccount *sa = gc->proto_data;
+
+	if (!sa)
+		return;
+
+	if (sa->rtm)
+		purple_websocket_abort(sa->rtm);
+
+	g_free(sa->api_url);
+	g_free(sa->token);
+	g_free(sa);
+	gc->proto_data = NULL;
 }
 
 static PurplePluginProtocolInfo prpl_info = {
@@ -139,9 +232,11 @@ static PurplePluginInfo info = {
     
 static void init_plugin(G_GNUC_UNUSED PurplePlugin *plugin)
 {
+	prpl_info.user_splits = g_list_append(prpl_info.user_splits,
+		purple_account_user_split_new("Host", "slack.com", '@'));
+
 	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
 		purple_account_option_string_new("API token", "api_token", ""));
-
 }
 
 PURPLE_INIT_PLUGIN(slack, init_plugin, info);
