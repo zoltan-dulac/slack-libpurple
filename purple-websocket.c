@@ -73,6 +73,7 @@ void purple_websocket_abort(PurpleWebsocket *ws) {
 	if (ws->connection != NULL)
 		purple_proxy_connect_cancel(ws->connection);
 
+	purple_debug_misc("websocket", "removing input %d\n", ws->inpa);
 	if (ws->inpa > 0)
 		purple_input_remove(ws->inpa);
 
@@ -127,12 +128,12 @@ static const char *find_header_content(const char *data, const char *name) {
 
 static gboolean ws_read_headers(PurpleWebsocket *ws, const char *headers) {
 	const char *upgrade = skip_lws(find_header_content(headers, "Upgrade"));
-	if (upgrade && (!g_ascii_strncasecmp(upgrade, "websocket", 9) || skip_lws(upgrade+9)))
+	if (upgrade && (g_ascii_strncasecmp(upgrade, "websocket", 9) || skip_lws(upgrade+9)))
 		upgrade = NULL;
 
 	const char *connection = find_header_content(headers, "Connection");
-	while (connection && g_ascii_strncasecmp(connection, "Upgrade", 7))
-		while ((connection = skip_lws(connection)) && *connection++ != ',');
+	while ((connection = skip_lws(connection)) && g_ascii_strncasecmp(connection, "Upgrade", 7))
+		while (*connection++ != ',' && (connection = skip_lws(connection)));
 	if (connection) {
 		const char *e = skip_lws(connection+7);
 		if (e && *e != ',')
@@ -147,7 +148,8 @@ static gboolean ws_read_headers(PurpleWebsocket *ws, const char *headers) {
 		g_warn_if_fail(purple_cipher_digest_region("sha1", (guchar *)k, strlen(k), l, s, &l));
 		g_free(k);
 		gchar *b = g_base64_encode(s, l);
-		if (strcmp(accept, b))
+		l = strlen(b);
+		if (strncmp(accept, b, l) || skip_lws(accept+l))
 			accept = NULL;
 		g_free(b);
 	}
@@ -175,14 +177,23 @@ static size_t ws_read_message(PurpleWebsocket *ws) {
 	unsigned fi;
 
 	for (fi = 0; fi < MAX_FRAG; fi ++) {
+#define GETN(N) ({ \
+		if (len-off < (N)) \
+			return off+N; \
+		uint8_t *_p = &input[off]; \
+		off += N; \
+		_p; \
+	})
+#define GET(T) (*(T*)GETN(sizeof(T)))
+
 		if (len-off < 2)
 			return off+2;
-		uint8_t header = input[off++];
+		uint8_t header = GET(uint8_t);
 		if (header & ~(WS_OP_MASK|WS_FIN)) {
 			ws_error(ws, "Unsupported RSV flag");
 			return 0;
 		}
-		uint8_t mlen = input[off++];
+		uint8_t mlen = GET(uint8_t);
 		if (mlen & WS_MASK) {
 			ws_error(ws, "Masked frame");
 			return 0;
@@ -190,20 +201,17 @@ static size_t ws_read_message(PurpleWebsocket *ws) {
 		uint64_t plen = mlen & ~WS_MASK;
 		switch (plen) {
 			case 127:
-				if (len-off < 8)
-					return off+8;
-				plen = be64toh(*(uint64_t*)&input[off+=8]);
+				plen = be64toh(GET(uint64_t));
 				break;
 			case 126:
-				if (len-off < 2)
-					return off+2;
-				plen = be16toh(*(uint16_t*)&input[off+=2]);
+				plen = be16toh(GET(uint16_t));
 				break;
 		}
-		if (len-off < plen)
-			return off+plen;
 		frag[fi].l = plen;
-		frag[fi].p = &input[off+=plen];
+		frag[fi].p = GETN(plen);
+	
+#undef GET
+#undef GETN
 
 		if (header & WS_FIN) {
 			/* consolidate all the fragments after the first */
@@ -213,6 +221,7 @@ static size_t ws_read_message(PurpleWebsocket *ws) {
 				frag[0].l += frag[i].l;
 			}
 
+			purple_debug_misc("websocket", "message %x len %zd\n", input[0], frag[0].l);
 			uint8_t op = input[0] & WS_OP_MASK;
 			switch (op) {
 				case WS_OP_TEXT:
@@ -245,7 +254,7 @@ static size_t ws_read_message(PurpleWebsocket *ws) {
 
 static void ws_input_cb(gpointer data, gint source, PurpleInputCondition cond);
 
-static void ws_input(PurpleWebsocket *ws) {
+static gboolean ws_input(PurpleWebsocket *ws) {
 	if (ws->inpa) {
 		purple_input_remove(ws->inpa);
 		ws->inpa = 0;
@@ -263,11 +272,12 @@ static void ws_input(PurpleWebsocket *ws) {
 		cond |= PURPLE_INPUT_WRITE;
 	else if (ws->closed & PURPLE_INPUT_READ) {
 		purple_websocket_abort(ws);
-		return;
+		return FALSE;
 	}
 
 	if (cond)
 		ws->inpa = purple_input_add(ws->fd, cond, ws_input_cb, ws);
+	return TRUE;
 }
 
 static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCondition cond) {
@@ -284,7 +294,8 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 				return;
 			}
 		} else if ((ws->output.off += len) >= ws->output.len)
-			ws_input(ws);
+			if (!ws_input(ws))
+				return;
 	}
 
 	if (cond & PURPLE_INPUT_READ) {
@@ -307,7 +318,10 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 			if (!ws->connected) {
 				/* search for the end of headers in the new block (backing up 4-1) */
 				char *resp = (char *)ws->input.buf;
-				char *eoh = g_strstr_len(resp + ws->input.off - len - 3, len + 3, "\r\n\r\n");
+				int backup = len + 3;
+				if (backup > ws->input.off)
+					backup = ws->input.off;
+				char *eoh = g_strstr_len(resp + ws->input.off - backup, backup, "\r\n\r\n");
 
 				if (eoh) {
 					/* got all the headers now */
@@ -346,7 +360,7 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 
 void purple_websocket_send(PurpleWebsocket *ws, PurpleWebsocketOp op, const guchar *msg, size_t len) {
 	g_return_if_fail(ws->connected && !(ws->closed & PURPLE_INPUT_WRITE));
-	g_return_if_fail(op & ~WS_OP_MASK);
+	g_return_if_fail(!(op & ~WS_OP_MASK));
 	gboolean buf = ws->output.len;
 
 #define ADD(T, V) BUFFER_ADD(&ws->output, T, V)
@@ -391,8 +405,8 @@ static void wss_connect_cb(gpointer data, PurpleSslConnection *ssl_connection, G
 	ws->fd = ssl_connection->fd;
 	purple_ssl_input_add(ws->ssl_connection, wss_input_cb, ws);
 
-	ws_input(ws);
-	ws_input_cb(ws, ws->fd, PURPLE_INPUT_WRITE);
+	if (ws_input(ws))
+		ws_input_cb(ws, ws->fd, PURPLE_INPUT_WRITE);
 }
 
 static void wss_error_cb(G_GNUC_UNUSED PurpleSslConnection *ssl_connection, PurpleSslErrorType error, gpointer data) {
@@ -412,8 +426,8 @@ static void ws_connect_cb(gpointer data, gint source, const gchar *error_message
 
 	ws->fd = source;
 
-	ws_input(ws);
-	ws_input_cb(ws, ws->fd, PURPLE_INPUT_WRITE);
+	if (ws_input(ws))
+		ws_input_cb(ws, ws->fd, PURPLE_INPUT_WRITE);
 }
 
 PurpleWebsocket *purple_websocket_connect(PurpleAccount *account,
@@ -461,7 +475,7 @@ PurpleWebsocket *purple_websocket_connect(PurpleAccount *account,
 
 		GString *request = g_string_new(NULL);
 		g_string_printf(request, "\
-GET %s HTTP/1.1\r\n\
+GET /%s HTTP/1.1\r\n\
 Host: %s\r\n\
 Connection: Upgrade\r\n\
 Upgrade: websocket\r\n\

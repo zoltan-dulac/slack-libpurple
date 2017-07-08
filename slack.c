@@ -34,6 +34,7 @@ static GList *slack_status_types(G_GNUC_UNUSED PurpleAccount *acct) {
 static void slack_rtm_cb(PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp op, const guchar *msg, size_t len) {
 	SlackAccount *sa = data;
 
+	purple_debug_misc("slack", "RTM %x: %.*s\n", op, (int)len, msg);
 	switch (op) {
 		case PURPLE_WEBSOCKET_TEXT:
 			break;
@@ -43,6 +44,7 @@ static void slack_rtm_cb(PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp o
 					PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
 					(const char *)msg ?: "RTM connection closed");
 			sa->rtm = NULL;
+			break;
 		case PURPLE_WEBSOCKET_OPEN:
 			purple_connection_update_progress(sa->gc, "RTM Connected", 3, CONNECT_STEPS);
 		default:
@@ -53,6 +55,7 @@ static void slack_rtm_cb(PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp o
 	json_value *type = json_get_prop(json, "type");
 	if (!type || type->type != json_string)
 	{
+		purple_debug_error("slack", "RTM: %.*s\n", (int)len, msg);
 		purple_connection_error_reason(sa->gc,
 				PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
 				"Could not parse RTM JSON");
