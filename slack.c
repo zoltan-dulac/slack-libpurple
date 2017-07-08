@@ -11,6 +11,7 @@
 
 #include "slack.h"
 #include "slack-rtm.h"
+#include "slack-user.h"
 
 static const char *slack_list_icon(G_GNUC_UNUSED PurpleAccount * account, G_GNUC_UNUSED PurpleBuddy * buddy) {
 	return "slack";
@@ -50,6 +51,13 @@ static void slack_login(PurpleAccount *account) {
 
 	sa->token = g_strdup(purple_url_encode(token));
 
+	sa->users    = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_user_free);
+	/*
+	sa->ims      = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_im_free);
+	sa->channels = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_channel_free);
+	sa->groups   = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_group_free);
+	*/
+
 	purple_connection_set_display_name(gc, username);
 	purple_connection_set_state(gc, PURPLE_CONNECTING);
 
@@ -64,6 +72,15 @@ static void slack_close(PurpleConnection *gc) {
 
 	if (sa->rtm)
 		purple_websocket_abort(sa->rtm);
+
+	g_hash_table_destroy(sa->groups);
+	g_hash_table_destroy(sa->channels);
+	g_hash_table_destroy(sa->ims);
+	g_hash_table_destroy(sa->users);
+	g_free(sa->team.id);
+	g_free(sa->team.name);
+	g_free(sa->team.domain);
+	g_free(sa->self);
 
 	g_free(sa->api_url);
 	g_free(sa->token);

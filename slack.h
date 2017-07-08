@@ -7,6 +7,8 @@
 
 #define SLACK_PLUGIN_ID "prpl-slack"
 
+#define SLACK_CONNECT_STEPS 5
+
 typedef struct _SlackAccount {
 	PurpleAccount *account;
 	PurpleConnection *gc;
@@ -14,6 +16,19 @@ typedef struct _SlackAccount {
 	char *token; /* url encoded */
 
 	PurpleWebsocket *rtm;
+
+	char *self; /* self id */
+	struct _SlackTeam {
+		char *id;
+		char *name;
+		char *domain;
+	} team;
+
+	/* map IDs to objects */
+	GHashTable *users;
+	GHashTable *ims;
+	GHashTable *channels;
+	GHashTable *groups;
 } SlackAccount;
 
-#endif // _SLACK_PLUGIN_H
+#endif // _PURPLE_SLACK_H
