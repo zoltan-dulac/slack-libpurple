@@ -3,7 +3,7 @@ LIBNAME = libslack.so
 .PHONY: all
 all: $(LIBNAME)
 
-C_SRCS = slack.c slack-api.c purple-websocket.c json.c cstring.c
+C_SRCS = slack.c slack-api.c purple-websocket.c json/json.c
 
 # Object file names using 'Substitution Reference'
 C_OBJS = $(C_SRCS:.c=.o)
