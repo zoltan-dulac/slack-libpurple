@@ -1,5 +1,6 @@
 #include "slack-api.h"
 #include "slack-user.h"
+#include "slack-im.h"
 
 void slack_user_free(SlackUser *user) {
 	g_free(user->name);
@@ -40,10 +41,10 @@ static void users_list_cb(SlackAPICall *api, gpointer data, json_value *json, co
 	for (unsigned i = 0; i < members->u.array.length; i ++)
 		user_update(sa, members->u.array.values[i]);
 
-	purple_connection_set_state(sa->gc, PURPLE_CONNECTED);
+	slack_ims_load(sa);
 }
 
-void slack_users_get(SlackAccount *sa) {
+void slack_users_load(SlackAccount *sa) {
 	purple_connection_update_progress(sa->gc, "Loading Users", 4, SLACK_CONNECT_STEPS);
 	slack_api_call(sa, "users.list", "presence=false", users_list_cb, sa);
 }

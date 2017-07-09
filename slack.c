@@ -12,6 +12,7 @@
 #include "slack.h"
 #include "slack-rtm.h"
 #include "slack-user.h"
+#include "slack-im.h"
 
 static const char *slack_list_icon(G_GNUC_UNUSED PurpleAccount * account, G_GNUC_UNUSED PurpleBuddy * buddy) {
 	return "slack";
@@ -63,8 +64,8 @@ static void slack_login(PurpleAccount *account) {
 	sa->token = g_strdup(purple_url_encode(token));
 
 	sa->users    = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_user_free);
-	/*
 	sa->ims      = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_im_free);
+	/*
 	sa->channels = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_channel_free);
 	sa->groups   = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_group_free);
 	*/
@@ -72,6 +73,15 @@ static void slack_login(PurpleAccount *account) {
 	purple_connection_set_display_name(gc, username);
 	purple_connection_set_state(gc, PURPLE_CONNECTING);
 
+	/* connect order (SLACK_CONNECT_STEPS):
+		1. slack_rtm_connect
+		2. slack_connect_cb
+		   purple_websocket_connect
+		3. rtm_cb
+		   rtm_msg("hello")
+		4. slack_users_load
+		5. slack_ims_load
+	*/
 	slack_rtm_connect(sa);
 }
 

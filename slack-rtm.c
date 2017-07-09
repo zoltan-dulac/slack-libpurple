@@ -9,11 +9,17 @@
 
 static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
 	if (!strcmp(type, "hello")) {
-		slack_users_get(sa);
+		slack_users_load(sa);
 	}
 	else if (!strcmp(type, "user_changed") ||
 		 !strcmp(type, "team_join")) {
 		slack_user_changed(sa, json);
+	}
+	else if (!strcmp(type, "im_closed")) {
+		slack_im_closed(sa, json);
+	}
+	else if (!strcmp(type, "im_open")) {
+		slack_im_opened(sa, json);
 	}
 	else {
 		purple_debug_info("slack", "Unhandled RTM type %s\n", type);

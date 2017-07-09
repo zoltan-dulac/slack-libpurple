@@ -7,7 +7,7 @@
 
 #define SLACK_PLUGIN_ID "prpl-slack"
 
-#define SLACK_CONNECT_STEPS 5
+#define SLACK_CONNECT_STEPS 6
 
 typedef struct _SlackAccount {
 	PurpleAccount *account;

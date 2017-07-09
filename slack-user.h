@@ -10,7 +10,7 @@ typedef struct _SlackUser {
 
 void slack_user_free(SlackUser *user);
 void slack_user_changed(SlackAccount *sa, json_value *json);
-void slack_users_get(SlackAccount *sa);
+void slack_users_load(SlackAccount *sa);
 SlackUser *slack_user_find(SlackAccount *sa, const char *name);
 
 #endif // _PURPLE_SLACK_USER_H
