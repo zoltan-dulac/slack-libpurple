@@ -1,4 +1,3 @@
-#include <endian.h>
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>
@@ -201,10 +200,10 @@ static size_t ws_read_message(PurpleWebsocket *ws) {
 		uint64_t plen = mlen & ~WS_MASK;
 		switch (plen) {
 			case 127:
-				plen = be64toh(GET(uint64_t));
+				plen = GUINT64_FROM_BE(GET(uint64_t));
 				break;
 			case 126:
-				plen = be16toh(GET(uint16_t));
+				plen = GUINT16_FROM_BE(GET(uint16_t));
 				break;
 		}
 		frag[fi].l = plen;
@@ -368,10 +367,10 @@ void purple_websocket_send(PurpleWebsocket *ws, PurpleWebsocketOp op, const guch
 	ADD(uint8_t, WS_FIN | op);
 	if (len > UINT16_MAX) {
 		ADD(uint8_t, WS_MASK | 127);
-		ADD(uint64_t, htobe64(len));
+		ADD(uint64_t, GUINT64_TO_BE(len));
 	} else if (len >= 126) {
 		ADD(uint8_t, WS_MASK | 126);
-		ADD(uint16_t, htobe16(len));
+		ADD(uint16_t, GUINT16_TO_BE(len));
 	} else {
 		ADD(uint8_t, WS_MASK | len);
 	}
