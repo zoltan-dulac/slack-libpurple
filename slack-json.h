@@ -1,7 +1,7 @@
 #ifndef _PURPLE_SLACK_JSON_H
 #define _PURPLE_SLACK_JSON_H
 
-#include "json/json.h"
+#include <json.h>
 
 json_value *json_get_prop(json_value *val, const char *prop) __attribute__((pure));
 

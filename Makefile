@@ -10,7 +10,6 @@ C_SRCS = slack.c \
 	 slack-api.c \
 	 slack-object.c \
 	 slack-json.c \
-	 json/json.c \
 	 purple-websocket.c
 
 # Object file names using 'Substitution Reference'
@@ -22,7 +21,7 @@ LD = $(CC)
 PURPLE_MOD ?= $(shell pkg-config --exists purple-3 && echo purple-3 || echo purple)
 PLUGIN_DIR_PURPLE:=$(shell pkg-config --variable=plugindir $(PURPLE_MOD))
 DATA_ROOT_DIR_PURPLE:=$(shell pkg-config --variable=datarootdir $(PURPLE_MOD))
-PKGS=$(PURPLE_MOD)
+PKGS=$(PURPLE_MOD) json-parser
 
 CFLAGS = \
     -g \
@@ -64,7 +63,7 @@ uninstall: $(LIBNAME)
 
 .PHONY: clean
 clean:
-	rm -f *.o $(LIBNAME)
+	rm -f *.o $(LIBNAME) Makefile.dep
 
 Makefile.dep: $(C_SRCS)
 	$(CC) -MM $(CFLAGS) $^ > Makefile.dep

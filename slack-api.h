@@ -3,7 +3,7 @@
 
 #include <glib.h>
 
-#include "json/json.h"
+#include <json.h>
 #include "slack.h"
 
 typedef struct _SlackAPICall SlackAPICall;
