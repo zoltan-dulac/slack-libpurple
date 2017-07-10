@@ -63,8 +63,8 @@ static void slack_login(PurpleAccount *account) {
 
 	sa->token = g_strdup(purple_url_encode(token));
 
-	sa->users    = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_user_free);
-	sa->ims      = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_im_free);
+	sa->users    = slack_object_hash_table_new();
+	sa->ims      = slack_object_hash_table_new();
 	/*
 	sa->channels = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_channel_free);
 	sa->groups   = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_group_free);

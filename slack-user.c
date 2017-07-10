@@ -2,25 +2,43 @@
 #include "slack-user.h"
 #include "slack-im.h"
 
-void slack_user_free(SlackUser *user) {
+G_DEFINE_TYPE(SlackUser, slack_user, SLACK_TYPE_OBJECT);
+
+static void slack_user_finalize(GObject *gobj) {
+	SlackUser *user = SLACK_USER(gobj);
+
 	g_free(user->name);
-	g_free(user);
+
+	G_OBJECT_CLASS(slack_user_parent_class)->finalize(gobj);
+}
+
+static void slack_user_class_init(SlackUserClass *klass) {
+	GObjectClass *gobj = G_OBJECT_CLASS(klass);
+	gobj->finalize = slack_user_finalize;
+}
+
+static void slack_user_init(SlackUser *self) {
 }
 
 static void user_update(SlackAccount *sa, json_value *json) {
 	json_value *id = json_get_prop_type(json, "id", string);
 	if (!id)
 		return;
+
 	json_value *deleted = json_get_prop_type(json, "deleted", boolean);
 	if (deleted && deleted->u.boolean) {
-		g_hash_table_remove(sa->users, id);
+		slack_object_hash_table_remove(sa->users, id->u.string.ptr);
 		return;
 	}
+
+	SlackUser *user = (SlackUser*)slack_object_hash_table_get(sa->users, SLACK_TYPE_USER, id->u.string.ptr);
+
 	json_value *name = json_get_prop_type(json, "name", string);
 
-	SlackUser *user = g_new0(SlackUser, 1);
-	if (name) user->name = g_strdup(name->u.string.ptr);
-	g_hash_table_replace(sa->users, g_strdup(id->u.string.ptr), user);
+	if (name) {
+		g_free(user->name);
+		user->name = g_strdup(name->u.string.ptr);
+	}
 }
 
 void slack_user_changed(SlackAccount *sa, json_value *json) {

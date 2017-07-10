@@ -2,13 +2,18 @@
 #define _PURPLE_SLACK_USER_H
 
 #include "slack-json.h"
+#include "slack-object.h"
 #include "slack.h"
 
-typedef struct _SlackUser {
-	char *name;
-} SlackUser;
+struct _SlackUser {
+	SlackObject object;
 
-void slack_user_free(SlackUser *user);
+	char *name;
+};
+
+#define SLACK_TYPE_USER slack_user_get_type()
+G_DECLARE_FINAL_TYPE(SlackUser, slack_user, SLACK, USER, SlackObject)
+
 void slack_user_changed(SlackAccount *sa, json_value *json);
 void slack_users_load(SlackAccount *sa);
 SlackUser *slack_user_find(SlackAccount *sa, const char *name);

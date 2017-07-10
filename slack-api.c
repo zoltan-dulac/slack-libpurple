@@ -52,7 +52,7 @@ SlackAPICall *slack_api_call(SlackAccount *sa, const char *method, const char *q
 	}
 
 	call->fetch = purple_util_fetch_url_request_data_len_with_account(sa->account,
-			url->str, TRUE, NULL, TRUE, NULL, 0, FALSE, -1,
+			url->str, TRUE, NULL, TRUE, NULL, 0, FALSE, 4096*1024,
 			api_cb, call);
 	g_string_free(url, TRUE);
 

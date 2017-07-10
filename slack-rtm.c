@@ -6,6 +6,7 @@
 #include "slack-api.h"
 #include "slack-rtm.h"
 #include "slack-user.h"
+#include "slack-im.h"
 
 static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
 	if (!strcmp(type, "hello")) {

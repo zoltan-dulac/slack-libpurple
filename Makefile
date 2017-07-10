@@ -4,9 +4,11 @@ LIBNAME = libslack.so
 all: $(LIBNAME)
 
 C_SRCS = slack.c \
+	 slack-im.c \
 	 slack-user.c \
 	 slack-rtm.c \
 	 slack-api.c \
+	 slack-object.c \
 	 slack-json.c \
 	 json/json.c \
 	 purple-websocket.c
@@ -37,6 +39,8 @@ LDFLAGS = -shared
 
 %.o: %.c
 	$(CC) -c $(CFLAGS) -o $@ $<
+%.E: %.c
+	$(CC) -E $(CFLAGS) -o $@ $<
 
 $(LIBNAME): $(C_OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
@@ -60,5 +64,8 @@ uninstall: $(LIBNAME)
 
 .PHONY: clean
 clean:
-	-rm *.o
-	-rm $(LIBNAME)
+	rm -f *.o $(LIBNAME)
+
+Makefile.dep: $(C_SRCS)
+	$(CC) -MM $(CFLAGS) $^ > Makefile.dep
+include Makefile.dep
