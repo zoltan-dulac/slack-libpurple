@@ -56,6 +56,14 @@ static inline gboolean slack_object_hash_table_remove(GHashTable *hash_table, co
 	return g_hash_table_remove(hash_table, id);
 }
 
+static inline SlackObject *slack_object_hash_table_take(GHashTable *hash_table, const char *sid) {
+	slack_object_id id;
+	slack_object_id_set(id, sid);
+	SlackObject *obj = g_hash_table_lookup(hash_table, id);
+	if (obj) g_hash_table_steal(hash_table, id);
+	return obj;
+}
+
 static inline SlackObject *slack_object_hash_table_get(GHashTable *hash_table, GType type, const char *sid) __attribute__((returns_nonnull));
 static inline SlackObject *slack_object_hash_table_get(GHashTable *hash_table, GType type, const char *sid) {
 	slack_object_id id;
@@ -63,7 +71,7 @@ static inline SlackObject *slack_object_hash_table_get(GHashTable *hash_table, G
 	SlackObject *obj = g_hash_table_lookup(hash_table, id);
 	if (!obj) {
 		obj = g_object_new(type, NULL);
-		slack_object_id_copy(id, id);
+		slack_object_id_copy(obj->id, id);
 		slack_object_hash_table_replace(hash_table, obj);
 	}
 	return obj;

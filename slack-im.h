@@ -10,6 +10,7 @@ struct _SlackIM {
 	SlackObject object;
 
 	SlackUser *user;
+	PurpleBuddy *buddy;
 };
 
 #define SLACK_TYPE_IM slack_im_get_type()

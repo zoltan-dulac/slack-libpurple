@@ -57,8 +57,7 @@ static void slack_login(PurpleAccount *account) {
 	sa->account = account;
 	sa->gc = gc;
 
-	const char *username = purple_account_get_username(account);
-	const char *host = strrchr(username, '@');
+	const char *host = strrchr(account->username, '@');
 	sa->api_url = g_strdup_printf("https://%s/api", host ? host+1 : "slack.com");
 
 	sa->token = g_strdup(purple_url_encode(token));
@@ -70,7 +69,7 @@ static void slack_login(PurpleAccount *account) {
 	sa->groups   = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_group_free);
 	*/
 
-	purple_connection_set_display_name(gc, username);
+	purple_connection_set_display_name(gc, account->alias ?: account->username);
 	purple_connection_set_state(gc, PURPLE_CONNECTING);
 
 	/* connect order (SLACK_CONNECT_STEPS):

@@ -1,3 +1,5 @@
+#include <debug.h>
+
 #include "slack-api.h"
 #include "slack-user.h"
 #include "slack-im.h"
@@ -7,6 +9,7 @@ G_DEFINE_TYPE(SlackUser, slack_user, SLACK_TYPE_OBJECT);
 static void slack_user_finalize(GObject *gobj) {
 	SlackUser *user = SLACK_USER(gobj);
 
+	purple_debug_misc("slack", "freeing user %s\n", user->object.id);
 	g_free(user->name);
 
 	G_OBJECT_CLASS(slack_user_parent_class)->finalize(gobj);
@@ -38,7 +41,10 @@ static void user_update(SlackAccount *sa, json_value *json) {
 	if (name) {
 		g_free(user->name);
 		user->name = g_strdup(name->u.string.ptr);
-	}
+		purple_debug_misc("slack", "user %s: %s\n", id->u.string.ptr, name->u.string.ptr);
+	} else
+		purple_debug_warning("slack", "user %s missing name\n", id->u.string.ptr);
+
 }
 
 void slack_user_changed(SlackAccount *sa, json_value *json) {

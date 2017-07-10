@@ -29,6 +29,8 @@ typedef struct _SlackAccount {
 	GHashTable *ims;
 	GHashTable *channels;
 	GHashTable *groups;
+
+	PurpleGroup *blist_ims;
 } SlackAccount;
 
 #endif // _PURPLE_SLACK_H
