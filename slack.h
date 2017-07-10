@@ -30,7 +30,8 @@ typedef struct _SlackAccount {
 	GHashTable *channels;
 	GHashTable *groups;
 
-	PurpleGroup *blist_ims;
+	PurpleGroup *blist; /* default group for ims/channels */
+	GHashTable *buddies; /* slack ID -> PurpleBListNode */
 } SlackAccount;
 
 #endif // _PURPLE_SLACK_H

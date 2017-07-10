@@ -69,6 +69,8 @@ static void slack_login(PurpleAccount *account) {
 	sa->groups   = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_group_free);
 	*/
 
+	sa->buddies = g_hash_table_new_full(/* slack_object_id_hash, slack_object_id_equal, */ g_str_hash, g_str_equal, NULL, NULL);
+
 	purple_connection_set_display_name(gc, account->alias ?: account->username);
 	purple_connection_set_state(gc, PURPLE_CONNECTING);
 
@@ -92,6 +94,8 @@ static void slack_close(PurpleConnection *gc) {
 
 	if (sa->rtm)
 		purple_websocket_abort(sa->rtm);
+
+	g_hash_table_destroy(sa->buddies);
 
 	g_hash_table_destroy(sa->groups);
 	g_hash_table_destroy(sa->channels);

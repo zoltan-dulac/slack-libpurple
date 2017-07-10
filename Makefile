@@ -7,6 +7,7 @@ C_SRCS = slack.c \
 	 slack-im.c \
 	 slack-user.c \
 	 slack-rtm.c \
+	 slack-blist.c \
 	 slack-api.c \
 	 slack-object.c \
 	 slack-json.c \

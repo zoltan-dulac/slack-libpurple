@@ -4,9 +4,10 @@
 
 #include "slack-json.h"
 #include "slack-api.h"
-#include "slack-rtm.h"
 #include "slack-user.h"
 #include "slack-im.h"
+#include "slack-blist.h"
+#include "slack-rtm.h"
 
 static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
 	if (!strcmp(type, "hello")) {
@@ -97,6 +98,9 @@ static void rtm_connect_cb(SlackAPICall *api, gpointer data, json_value *json, c
 	SET_STR(team.domain, team, "domain");
 
 #undef SET_STR
+
+	/* now that we have team info... */
+	slack_blist_init(sa);
 
 	purple_connection_update_progress(sa->gc, "Connecting to RTM", 2, SLACK_CONNECT_STEPS);
 	purple_debug_info("slack", "RTM URL: %s\n", url->u.string.ptr);

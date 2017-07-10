@@ -6,24 +6,27 @@
 #include <glib-object.h>
 
 /* object IDs seem to always be of the form "TXXXXXXXX" where T is a type identifier and X are [0-9A-Z] (base32?) */
-#define SLACK_OBJECT_ID_SIZ	12
-typedef char slack_object_id[SLACK_OBJECT_ID_SIZ];
+#define SLACK_OBJECT_ID_LEN	11
+/* These may be safely treated as strings (always NULL terminated and padded),
+ * but strings are not valid slack_object_ids */
+typedef char slack_object_id[SLACK_OBJECT_ID_LEN+1];
 
 static inline void slack_object_id_set(slack_object_id id, const char *s) {
-	if (s)
-		strncpy(id, s, SLACK_OBJECT_ID_SIZ);
-	else
-		memset(id, 0, SLACK_OBJECT_ID_SIZ);
+	if (s) {
+		strncpy(id, s, SLACK_OBJECT_ID_LEN);
+		id[SLACK_OBJECT_ID_LEN] = 0;
+	} else
+		memset(id, 0, SLACK_OBJECT_ID_LEN+1);
 }
 
 static inline gboolean slack_object_id_is(const slack_object_id id, const char *s) {
-	return s ? !strncmp(id, s, SLACK_OBJECT_ID_SIZ) : !*id;
+	return s ? !strncmp(id, s, SLACK_OBJECT_ID_LEN) : !*id;
 }
 
 #define slack_object_id_copy(dst, src) \
-	memcpy(dst, src, SLACK_OBJECT_ID_SIZ)
+	memcpy(dst, src, SLACK_OBJECT_ID_LEN+1)
 #define slack_object_id_cmp(a, b) \
-	memcmp(a, b, SLACK_OBJECT_ID_SIZ)
+	memcmp(a, b, SLACK_OBJECT_ID_LEN)
 
 guint slack_object_id_hash(gconstpointer id);
 gboolean slack_object_id_equal(gconstpointer a, gconstpointer b);

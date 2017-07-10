@@ -1,6 +1,7 @@
 #include <debug.h>
 
 #include "slack-api.h"
+#include "slack-blist.h"
 #include "slack-im.h"
 
 G_DEFINE_TYPE(SlackIM, slack_im, SLACK_TYPE_OBJECT);
@@ -45,8 +46,8 @@ static void im_update(SlackAccount *sa, json_value *json, gboolean open) {
 	json_value *user_id = json_get_prop_type(json, "user", string);
 	if (user_id && !(im->user && slack_object_has_id(&im->user->object, user_id->u.string.ptr))) {
 		if (im->buddy) {
-			g_clear_object(&im->buddy->proto_data);
 			purple_blist_remove_buddy(im->buddy);
+			slack_blist_uncache(sa, &im->buddy->node);
 			im->buddy = NULL;
 		}
 		g_clear_object(&im->user);
@@ -59,14 +60,15 @@ static void im_update(SlackAccount *sa, json_value *json, gboolean open) {
 
 	purple_debug_info("slack", "im: %p, %s\n", im->user, im->user ? im->user->name : NULL);
 	if (im->user && im->user->name && !im->buddy) {
-		im->buddy = purple_find_buddy_in_group(sa->account, im->user->name, sa->blist_ims);
-		if (!im->buddy) {
+		im->buddy = g_hash_table_lookup(sa->buddies, im->object.id);
+		if (im->buddy && PURPLE_BLIST_NODE_IS_BUDDY(PURPLE_BLIST_NODE(im->buddy))) {
+			if (strcmp(im->user->name, purple_buddy_get_name(im->buddy)))
+				purple_blist_rename_buddy(im->buddy, im->user->name);
+		} else {
 			im->buddy = purple_buddy_new(sa->account, im->user->name, NULL);
-			purple_blist_add_buddy(im->buddy, NULL, sa->blist_ims, NULL);
+			slack_blist_cache(sa, &im->buddy->node, im->object.id);
+			purple_blist_add_buddy(im->buddy, NULL, sa->blist, NULL);
 		}
-		g_clear_object(&im->buddy->proto_data);
-		/* not clear how to unref this later, maybe should just keep id string prop */
-		im->buddy->proto_data = g_object_ref(im);
 	}
 }
 
@@ -86,17 +88,6 @@ static void im_list_cb(SlackAPICall *api, gpointer data, json_value *json, const
 		purple_connection_error_reason(sa->gc,
 				PURPLE_CONNECTION_ERROR_NETWORK_ERROR, error ?: "Missing IM channel list");
 		return;
-	}
-
-	if (!sa->blist_ims) {
-		char *name = g_strdup_printf("%s %s", sa->team.name ?: "Slack", "Direct Messages");
-		/* TODO: add a property-based way of rediscovering this group, so the user can rename it */
-		sa->blist_ims = purple_find_group(name);
-		if (!sa->blist_ims) {
-			sa->blist_ims = purple_group_new(name);
-			purple_blist_add_group(sa->blist_ims, NULL);
-		}
-		g_free(name);
 	}
 
 	g_hash_table_remove_all(sa->ims);
