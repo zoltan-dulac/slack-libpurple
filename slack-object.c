@@ -2,7 +2,7 @@
 
 guint slack_object_id_hash(gconstpointer p) {
 	const guint *x = p+1;
-	return x[1] ^ (x[1] << 1);
+	return x[0] ^ (x[1] << 1);
 }
 
 gboolean slack_object_id_equal(gconstpointer a, gconstpointer b) {

@@ -5,10 +5,15 @@
 #include "slack-object.h"
 #include "slack.h"
 
+/* SlackUser represents both a user object, and an optional im object */
 struct _SlackUser {
 	SlackObject object;
 
 	char *name;
+
+	/* when there is an open IM channel: */
+	slack_object_id im;
+	PurpleBuddy *buddy;
 };
 
 #define SLACK_TYPE_USER slack_user_get_type()

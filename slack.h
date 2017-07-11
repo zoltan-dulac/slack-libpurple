@@ -25,14 +25,16 @@ typedef struct _SlackAccount {
 		char *domain;
 	} team;
 
-	/* map IDs to objects */
-	GHashTable *users;
-	GHashTable *ims;
+	GHashTable *users; /* slack_object_id user_id -> SlackUser (ref) */
+	GHashTable *user_names; /* char *user_name -> SlackUser (no ref) */
+	GHashTable *ims; /* slack_object_id im_id -> SlackUser (no ref) */
+	/*
 	GHashTable *channels;
 	GHashTable *groups;
+	*/
 
 	PurpleGroup *blist; /* default group for ims/channels */
-	GHashTable *buddies; /* slack ID -> PurpleBListNode */
+	GHashTable *buddies; /* char *slack_id -> PurpleBListNode */
 } SlackAccount;
 
 #endif // _PURPLE_SLACK_H

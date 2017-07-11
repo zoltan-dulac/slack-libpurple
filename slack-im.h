@@ -6,18 +6,10 @@
 #include "slack-user.h"
 #include "slack.h"
 
-struct _SlackIM {
-	SlackObject object;
-
-	SlackUser *user;
-	PurpleBuddy *buddy;
-};
-
-#define SLACK_TYPE_IM slack_im_get_type()
-G_DECLARE_FINAL_TYPE(SlackIM, slack_im, SLACK, IM, SlackObject)
-	
 void slack_im_closed(SlackAccount *sa, json_value *json);
 void slack_im_opened(SlackAccount *sa, json_value *json);
 void slack_ims_load(SlackAccount *sa);
+
+int slack_send_im(PurpleConnection *gc, const char *who, const char *message, PurpleMessageFlags flags);
 
 #endif // _PURPLE_SLACK_IM_H

@@ -68,8 +68,9 @@ static void slack_login(PurpleAccount *account) {
 
 	sa->token = g_strdup(purple_url_encode(token));
 
-	sa->users    = slack_object_hash_table_new();
-	sa->ims      = slack_object_hash_table_new();
+	sa->users    = g_hash_table_new_full(slack_object_id_hash, slack_object_id_equal, NULL, g_object_unref);
+	sa->user_names = g_hash_table_new_full(g_str_hash,         g_str_equal,           NULL, NULL);
+	sa->ims      = g_hash_table_new_full(slack_object_id_hash, slack_object_id_equal, NULL, NULL);
 	/*
 	sa->channels = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_channel_free);
 	sa->groups   = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_group_free);
@@ -103,9 +104,13 @@ static void slack_close(PurpleConnection *gc) {
 
 	g_hash_table_destroy(sa->buddies);
 
+	/*
 	g_hash_table_destroy(sa->groups);
 	g_hash_table_destroy(sa->channels);
+	*/
+
 	g_hash_table_destroy(sa->ims);
+	g_hash_table_destroy(sa->user_names);
 	g_hash_table_destroy(sa->users);
 	g_free(sa->team.id);
 	g_free(sa->team.name);
@@ -134,7 +139,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	NULL,			/* chat_info_defaults */
 	slack_login,		/* login */
 	slack_close,		/* close */
-	NULL,			/* send_im */
+	slack_send_im,		/* send_im */
 	NULL,			/* set_info */
 	NULL,			/* send_typing */
 	slack_get_info,		/* get_info */

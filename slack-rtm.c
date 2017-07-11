@@ -118,6 +118,8 @@ GString *slack_rtm_json_init(SlackAccount *sa, const char *type) {
 }
 
 void slack_rtm_send(SlackAccount *sa, const GString *json) {
+	g_return_if_fail(json->len > 0 && json->len <= 16384);
+	g_return_if_fail(json->str[0] == '{' && json->str[json->len-1] == '}');
 	purple_debug_misc("slack", "RTM: %.*s\n", (int)json->len, json->str);
 	purple_websocket_send(sa->rtm, PURPLE_WEBSOCKET_TEXT, (guchar*)json->str, json->len);
 }
