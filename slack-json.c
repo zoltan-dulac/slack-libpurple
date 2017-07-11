@@ -12,3 +12,33 @@ json_value *json_get_prop(json_value *val, const char *index) {
 
    return NULL;
 }
+
+GString *append_json_string(GString *str, const char *s) {
+	g_string_append_c(str, '"');
+	const char *p = s;
+	char c;
+	for (;;) {
+		switch ((c = *p)) {
+			case '\0':
+			case '"':
+			case '\\': break;
+			case '\b': c = 'b'; break;
+			case '\f': c = 'f'; break;
+			case '\n': c = 'n'; break;
+			case '\r': c = 'r'; break;
+			case '\t': c = 't'; break;
+			default:
+				p++;
+				continue;
+		}
+
+		g_string_append_len(str, s, p-s);
+		if (!c)
+			break;
+		g_string_append_c(str, '\\');
+		g_string_append_c(str, c);
+		s = ++p;
+	}
+
+	return g_string_append_c(str, '"');
+}

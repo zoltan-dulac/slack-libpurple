@@ -295,6 +295,12 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 		} else if ((ws->output.off += len) >= ws->output.len)
 			if (!ws_input(ws))
 				return;
+
+		/*
+		gchar *enc = g_base64_encode(ws->output.buf + ws->output.off, len);
+		purple_debug_misc("websocket", "sending: %s\n", enc);
+		g_free(enc);
+		*/
 	}
 
 	if (cond & PURPLE_INPUT_READ) {
@@ -382,7 +388,9 @@ void purple_websocket_send(PurpleWebsocket *ws, PurpleWebsocketOp op, const guch
 
 	guchar *p = buffer_incr(&ws->output, len);
 	size_t i;
-	for (i = 0; i < len; i++)
+	for (i = 0; i+3 < len; i+=4)
+		*(uint32_t*)&p[i] = *(uint32_t*)&msg[i] ^ mask;
+	for (; i < len; i++)
 		p[i] = msg[i] ^ ((uint8_t*)&mask)[i&3];
 
 	if (op == PURPLE_WEBSOCKET_CLOSE)

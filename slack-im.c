@@ -1,6 +1,7 @@
 #include <debug.h>
 
 #include "slack-api.h"
+#include "slack-rtm.h"
 #include "slack-blist.h"
 #include "slack-im.h"
 
@@ -9,7 +10,7 @@ G_DEFINE_TYPE(SlackIM, slack_im, SLACK_TYPE_OBJECT);
 static void slack_im_dispose(GObject *gobj) {
 	SlackIM *im = SLACK_IM(gobj);
 
-	purple_debug_misc("slack", "freeing im %s\n", im->object.id);
+	// purple_debug_misc("slack", "freeing im %s\n", im->object.id);
 	g_clear_object(&im->user);
 
 	G_OBJECT_CLASS(slack_im_parent_class)->dispose(gobj);
@@ -23,12 +24,37 @@ static void slack_im_class_init(SlackIMClass *klass) {
 static void slack_im_init(SlackIM *self) {
 }
 
-static void im_update(SlackAccount *sa, json_value *json, gboolean open) {
+static void slack_presence_sub(SlackAccount *sa) {
+	GString *json = slack_rtm_json_init(sa, "presence_sub");
+	GHashTableIter iter;
+	gpointer id;
+	SlackIM *im;
+	g_hash_table_iter_init(&iter, sa->ims);
+	g_string_append(json, ",\"ids\":[");
+	gboolean first = TRUE;
+	while (g_hash_table_iter_next(&iter, &id, (gpointer*)&im)) {
+		if (!im->user)
+			continue;
+		if (first)
+			first = FALSE;
+		else
+			g_string_append_c(json, ',');
+		append_json_string(json, im->user->object.id);
+	}
+	g_string_append(json, "]}");
+
+	slack_rtm_send(sa, json);
+	g_string_free(json, TRUE);
+}
+
+static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
 	json_value *id = json_get_prop_type(json, "id", string);
 	if (!id)
 		id = json_get_prop_type(json, "channel", string);
 	if (!id)
-		return;
+		return FALSE;
+
+	gboolean changed = FALSE;
 
 	json_value *is_open = json_get_prop_type(json, "is_open", boolean);
 	if (!(is_open ? is_open->u.boolean : open)) {
@@ -37,8 +63,9 @@ static void im_update(SlackAccount *sa, json_value *json, gboolean open) {
 			if (im->buddy)
 				purple_blist_remove_buddy(im->buddy);
 			g_object_unref(im);
+			changed = TRUE;
 		}
-		return;
+		return changed;
 	}
 
 	SlackIM *im = (SlackIM*)slack_object_hash_table_get(sa->ims, SLACK_TYPE_IM, id->u.string.ptr);
@@ -56,28 +83,36 @@ static void im_update(SlackAccount *sa, json_value *json, gboolean open) {
 			im->user = g_object_ref(user);
 		else
 			purple_debug_info("slack", "im: no user: %s\n", user_id->u.string.ptr);
+		changed = TRUE;
 	}
 
 	purple_debug_info("slack", "im: %p, %s\n", im->user, im->user ? im->user->name : NULL);
 	if (im->user && im->user->name && !im->buddy) {
 		im->buddy = g_hash_table_lookup(sa->buddies, im->object.id);
 		if (im->buddy && PURPLE_BLIST_NODE_IS_BUDDY(PURPLE_BLIST_NODE(im->buddy))) {
-			if (strcmp(im->user->name, purple_buddy_get_name(im->buddy)))
+			if (strcmp(im->user->name, purple_buddy_get_name(im->buddy))) {
 				purple_blist_rename_buddy(im->buddy, im->user->name);
+				changed = TRUE;
+			}
 		} else {
 			im->buddy = purple_buddy_new(sa->account, im->user->name, NULL);
 			slack_blist_cache(sa, &im->buddy->node, im->object.id);
 			purple_blist_add_buddy(im->buddy, NULL, sa->blist, NULL);
+			changed = TRUE;
 		}
 	}
+
+	return changed;
 }
 
 void slack_im_closed(SlackAccount *sa, json_value *json) {
-	im_update(sa, json, FALSE);
+	if (im_update(sa, json, FALSE))
+		slack_presence_sub(sa);
 }
 
 void slack_im_opened(SlackAccount *sa, json_value *json) {
-	im_update(sa, json, TRUE);
+	if (im_update(sa, json, TRUE))
+		slack_presence_sub(sa);
 }
 
 static void im_list_cb(SlackAPICall *api, gpointer data, json_value *json, const char *error) {
@@ -93,6 +128,8 @@ static void im_list_cb(SlackAPICall *api, gpointer data, json_value *json, const
 	g_hash_table_remove_all(sa->ims);
 	for (unsigned i = 0; i < ims->u.array.length; i ++)
 		im_update(sa, ims->u.array.values[i], TRUE);
+
+	slack_presence_sub(sa);
 
 	purple_connection_set_state(sa->gc, PURPLE_CONNECTED);
 }

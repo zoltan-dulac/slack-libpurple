@@ -22,10 +22,10 @@ static GList *slack_status_types(G_GNUC_UNUSED PurpleAccount *acct) {
 	GList *types = NULL;
 
 	types = g_list_append(types,
-		purple_status_type_new_full(PURPLE_STATUS_AVAILABLE, NULL, NULL, TRUE, TRUE, FALSE));
+		purple_status_type_new(PURPLE_STATUS_AVAILABLE, "active", "active", TRUE));
 
 	types = g_list_append(types,
-		purple_status_type_new_full(PURPLE_STATUS_OFFLINE, NULL, NULL, TRUE, TRUE, FALSE));
+		purple_status_type_new(PURPLE_STATUS_OFFLINE, "away", "away", TRUE));
 
 	return types;
 }

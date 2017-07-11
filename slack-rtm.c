@@ -23,6 +23,10 @@ static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
 	else if (!strcmp(type, "im_open")) {
 		slack_im_opened(sa, json);
 	}
+	else if (!strcmp(type, "presence_change") ||
+	         !strcmp(type, "presence_change_batch")) {
+		slack_presence_change(sa, json);
+	}
 	else {
 		purple_debug_info("slack", "Unhandled RTM type %s\n", type);
 	}
@@ -105,6 +109,17 @@ static void rtm_connect_cb(SlackAPICall *api, gpointer data, json_value *json, c
 	purple_connection_update_progress(sa->gc, "Connecting to RTM", 2, SLACK_CONNECT_STEPS);
 	purple_debug_info("slack", "RTM URL: %s\n", url->u.string.ptr);
 	sa->rtm = purple_websocket_connect(sa->account, url->u.string.ptr, NULL, rtm_cb, sa);
+}
+
+GString *slack_rtm_json_init(SlackAccount *sa, const char *type) {
+	GString *json = g_string_new(NULL);
+	g_string_printf(json, "{\"id\":%u,\"type\":\"%s\"", ++sa->rtm_id, type);
+	return json;
+}
+
+void slack_rtm_send(SlackAccount *sa, const GString *json) {
+	purple_debug_misc("slack", "RTM: %.*s\n", (int)json->len, json->str);
+	purple_websocket_send(sa->rtm, PURPLE_WEBSOCKET_TEXT, (guchar*)json->str, json->len);
 }
 
 void slack_rtm_connect(SlackAccount *sa) {

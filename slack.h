@@ -16,6 +16,7 @@ typedef struct _SlackAccount {
 	char *token; /* url encoded */
 
 	PurpleWebsocket *rtm;
+	unsigned rtm_id;
 
 	char *self; /* self id */
 	struct _SlackTeam {
