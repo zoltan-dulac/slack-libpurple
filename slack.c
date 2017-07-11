@@ -25,7 +25,13 @@ static GList *slack_status_types(G_GNUC_UNUSED PurpleAccount *acct) {
 		purple_status_type_new(PURPLE_STATUS_AVAILABLE, "active", "active", TRUE));
 
 	types = g_list_append(types,
-		purple_status_type_new(PURPLE_STATUS_OFFLINE, "away", "away", TRUE));
+		purple_status_type_new(PURPLE_STATUS_AWAY, "away", "away", TRUE));
+
+	/* Even though slack never says anyone is offline, we need this status.
+	 * (Maybe could treat deleted users as this?)
+	 */
+	types = g_list_append(types,
+		purple_status_type_new(PURPLE_STATUS_OFFLINE, NULL, NULL, TRUE));
 
 	return types;
 }
