@@ -23,7 +23,7 @@ static void slack_presence_sub(SlackAccount *sa) {
 	}
 	g_string_append_c(ids, ']');
 
-	slack_rtm_send(sa, "presence_sub", "ids", ids->str, NULL);
+	slack_rtm_send(sa, NULL, NULL, "presence_sub", "ids", ids->str, NULL);
 	g_string_free(ids, TRUE);
 }
 
@@ -134,6 +134,15 @@ static void send_im_free(struct send_im *send) {
 	g_free(send);
 }
 
+static void send_im_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
+	struct send_im *send = data;
+
+	if (error)
+		purple_conv_present_error(send->user->name, sa->account, error);
+
+	send_im_free(send);
+}
+
 static void send_im_open_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
 	struct send_im *send = data;
 
@@ -149,10 +158,9 @@ static void send_im_open_cb(SlackAccount *sa, gpointer data, json_value *json, c
 
 	GString *channel = append_json_string(g_string_new(NULL), send->user->im);
 	GString *text = append_json_string(g_string_new(NULL), send->msg);
-	slack_rtm_send(sa, "message", "channel", channel->str, "text", text->str, NULL);
+	slack_rtm_send(sa, send_im_cb, send, "message", "channel", channel->str, "text", text->str, NULL);
 	g_string_free(channel, TRUE);
 	g_string_free(text, TRUE);
-	send_im_free(send);
 }
 
 int slack_send_im(PurpleConnection *gc, const char *who, const char *msg, PurpleMessageFlags flags) {

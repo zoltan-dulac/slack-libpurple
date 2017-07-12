@@ -4,12 +4,12 @@
 struct _SlackAPICall {
 	SlackAccount *sa;
 	PurpleUtilFetchUrlData *fetch;
-	SlackAPICallback callback;
-	gpointer user_data;
+	SlackAPICallback *callback;
+	gpointer data;
 };
 
 static void api_error(SlackAPICall *call, const char *error) {
-	call->callback(call->sa, call->user_data, NULL, error);
+	call->callback(call->sa, call->data, NULL, error);
 	g_free(call);
 };
 
@@ -31,20 +31,20 @@ static void api_cb(G_GNUC_UNUSED PurpleUtilFetchUrlData *fetch, gpointer data, c
 		json_value *err = json_get_prop_type(json, "error", string);
 		api_error(call, err ? err->u.string.ptr : "Unknown error");
 	} else {
-		call->callback(call->sa, call->user_data, json, NULL);
+		call->callback(call->sa, call->data, json, NULL);
 	}
 
 	json_value_free(json);
 	g_free(call);
 }
 
-void slack_api_call(SlackAccount *sa, SlackAPICallback callback, gpointer data, const char *method, ...)
+void slack_api_call(SlackAccount *sa, SlackAPICallback callback, gpointer user_data, const char *method, ...)
 {
 
 	SlackAPICall *call = g_new0(SlackAPICall, 1);
 	call->sa = sa;
 	call->callback = callback;
-	call->user_data = data;
+	call->data = user_data;
 
 	GString *url = g_string_new(NULL);
 	g_string_printf(url, "%s/%s?token=%s", sa->api_url, method, sa->token);

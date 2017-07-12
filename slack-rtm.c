@@ -9,6 +9,12 @@
 #include "slack-blist.h"
 #include "slack-rtm.h"
 
+struct _SlackRTMCall {
+	SlackAccount *sa;
+	SlackRTMCallback *callback;
+	gpointer data;
+};
+
 static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
 	if (!strcmp(type, "hello")) {
 		slack_users_load(sa);
@@ -53,16 +59,33 @@ static void rtm_cb(PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp op, con
 	}
 
 	json_value *json = json_parse((const char *)msg, len);
+	json_value *reply_to = json_get_prop_type(json, "reply_to", integer);
 	json_value *type = json_get_prop_type(json, "type", string);
-	if (!type)
-	{
-		/* TODO: reply_to */
+
+	if (reply_to) {
+		SlackRTMCall *call = g_hash_table_lookup(sa->rtm_call, GUINT_TO_POINTER(reply_to->u.integer));
+		if (call) {
+			g_hash_table_steal(sa->rtm_call, GUINT_TO_POINTER(reply_to->u.integer));
+			json_value *ok = json_get_prop_type(json, "ok", boolean);
+			if (!ok || !ok->u.boolean) {
+				json_value *err = json_get_prop(json, "error");
+				if (err->type == json_object)
+					err = json_get_prop(err, "msg");
+				err = json_get_type(err, string);
+				call->callback(call->sa, call->data, json, err ? err->u.string.ptr : "Unknown error");
+			} else
+				call->callback(call->sa, call->data, json, NULL);
+			g_free(call);
+		}
+	}
+	else if (type)
+		rtm_msg(sa, type->u.string.ptr, json);
+	else {
 		purple_debug_error("slack", "RTM: %.*s\n", (int)len, msg);
 		purple_connection_error_reason(sa->gc,
 				PURPLE_CONNECTION_ERROR_NETWORK_ERROR,
 				"Could not parse RTM JSON");
-	} else
-		rtm_msg(sa, type->u.string.ptr, json);
+	}
 
 	json_value_free(json);
 }
@@ -111,9 +134,17 @@ static void rtm_connect_cb(SlackAccount *sa, gpointer data, json_value *json, co
 	sa->rtm = purple_websocket_connect(sa->account, url->u.string.ptr, NULL, rtm_cb, sa);
 }
 
-void slack_rtm_send(SlackAccount *sa, const char *type, ...) {
+void slack_rtm_cancel(SlackRTMCall *call) {
+	/* Called from sa->rtm_call value destructor: perhaps should be more explicit */
+	call->callback(call->sa, call->data, NULL, NULL);
+	g_free(call);
+}
+
+void slack_rtm_send(SlackAccount *sa, SlackRTMCallback *callback, gpointer user_data, const char *type, ...) {
+	gulong id = ++sa->rtm_id;
+
 	GString *json = g_string_new(NULL);
-	g_string_printf(json, "{\"id\":%u,\"type\":\"%s\"", ++sa->rtm_id, type);
+	g_string_printf(json, "{\"id\":%lu,\"type\":\"%s\"", id, type);
 	va_list qargs;
 	va_start(qargs, type);
 	const char *key;
@@ -124,7 +155,17 @@ void slack_rtm_send(SlackAccount *sa, const char *type, ...) {
 	va_end(qargs);
 	g_string_append_c(json, '}');
 	g_return_if_fail(json->len > 0 && json->len <= 16384);
+
 	purple_debug_misc("slack", "RTM: %.*s\n", (int)json->len, json->str);
+
+	if (callback) {
+		SlackRTMCall *call = g_new(SlackRTMCall, 1);
+		call->sa = sa;
+		call->callback = callback;
+		call->data = user_data;
+		g_hash_table_insert(sa->rtm_call, GUINT_TO_POINTER(id), call);
+	}
+
 	purple_websocket_send(sa->rtm, PURPLE_WEBSOCKET_TEXT, (guchar*)json->str, json->len);
 	g_string_free(json, TRUE);
 }

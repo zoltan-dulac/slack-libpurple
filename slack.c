@@ -68,6 +68,8 @@ static void slack_login(PurpleAccount *account) {
 
 	sa->token = g_strdup(purple_url_encode(token));
 
+	sa->rtm_call = g_hash_table_new_full(g_direct_hash,        g_direct_equal,        NULL, (GDestroyNotify)slack_rtm_cancel);
+
 	sa->users    = g_hash_table_new_full(slack_object_id_hash, slack_object_id_equal, NULL, g_object_unref);
 	sa->user_names = g_hash_table_new_full(g_str_hash,         g_str_equal,           NULL, NULL);
 	sa->ims      = g_hash_table_new_full(slack_object_id_hash, slack_object_id_equal, NULL, NULL);
@@ -101,6 +103,8 @@ static void slack_close(PurpleConnection *gc) {
 
 	if (sa->rtm)
 		purple_websocket_abort(sa->rtm);
+
+	g_hash_table_destroy(sa->rtm_call);
 
 	g_hash_table_destroy(sa->buddies);
 
