@@ -9,7 +9,7 @@ struct _SlackAPICall {
 };
 
 static void api_error(SlackAPICall *call, const char *error) {
-	call->callback(call, call->user_data, NULL, error);
+	call->callback(call->sa, call->user_data, NULL, error);
 	g_free(call);
 };
 
@@ -31,30 +31,35 @@ static void api_cb(G_GNUC_UNUSED PurpleUtilFetchUrlData *fetch, gpointer data, c
 		json_value *err = json_get_prop_type(json, "error", string);
 		api_error(call, err ? err->u.string.ptr : "Unknown error");
 	} else {
-		call->callback(call, call->user_data, json, NULL);
+		call->callback(call->sa, call->user_data, json, NULL);
 	}
 
 	json_value_free(json);
 	g_free(call);
 }
 
-SlackAPICall *slack_api_call(SlackAccount *sa, const char *method, const char *query, SlackAPICallback callback, gpointer data)
+void slack_api_call(SlackAccount *sa, SlackAPICallback callback, gpointer data, const char *method, ...)
 {
+
 	SlackAPICall *call = g_new0(SlackAPICall, 1);
+	call->sa = sa;
 	call->callback = callback;
 	call->user_data = data;
 
 	GString *url = g_string_new(NULL);
 	g_string_printf(url, "%s/%s?token=%s", sa->api_url, method, sa->token);
-	if (query) {
-		g_string_append_c(url, '&');
-		g_string_append(url, query);
+
+	va_list qargs;
+	va_start(qargs, method);
+	const char *param;
+	while ((param = va_arg(qargs, const char*))) {
+		const char *val = va_arg(qargs, const char*);
+		g_string_append_printf(url, "&%s=%s", param, purple_url_encode(val));
 	}
+	va_end(qargs);
 
 	call->fetch = purple_util_fetch_url_request_data_len_with_account(sa->account,
 			url->str, TRUE, NULL, TRUE, NULL, 0, FALSE, 4096*1024,
 			api_cb, call);
 	g_string_free(url, TRUE);
-
-	return call;
 }

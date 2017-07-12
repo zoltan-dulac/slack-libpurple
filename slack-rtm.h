@@ -4,7 +4,7 @@
 #include "slack.h"
 
 void slack_rtm_connect(SlackAccount *sa);
-GString *slack_rtm_json_init(SlackAccount *sa, const char *type);
-void slack_rtm_send(SlackAccount *sa, const GString *json);
+/* Send an RTM message of the given type (unquoted, escaped json string) with the given key (unquoted, escaped json string), value (const char *json) pairs */
+void slack_rtm_send(SlackAccount *sa, const char *type, /* const char *key1, const char *json1, */ ...) G_GNUC_NULL_TERMINATED;
 
 #endif

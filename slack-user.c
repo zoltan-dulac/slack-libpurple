@@ -75,8 +75,7 @@ void slack_user_changed(SlackAccount *sa, json_value *json) {
 	user_update(sa, json_get_prop(json, "user"));
 }
 
-static void users_list_cb(SlackAPICall *api, gpointer data, json_value *json, const char *error) {
-	SlackAccount *sa = data;
+static void users_list_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
 
 	json_value *members = json_get_prop_type(json, "members", array);
 	if (!members) {
@@ -94,7 +93,7 @@ static void users_list_cb(SlackAPICall *api, gpointer data, json_value *json, co
 
 void slack_users_load(SlackAccount *sa) {
 	purple_connection_update_progress(sa->gc, "Loading Users", 4, SLACK_CONNECT_STEPS);
-	slack_api_call(sa, "users.list", "presence=false", users_list_cb, sa);
+	slack_api_call(sa, users_list_cb, NULL, "users.list", "presence", "false", NULL);
 }
 
 static gboolean user_name_equal(char *id, SlackUser *user, const char *name) {

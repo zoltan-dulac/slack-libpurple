@@ -8,24 +8,23 @@
 #include "slack-im.h"
 
 static void slack_presence_sub(SlackAccount *sa) {
-	GString *json = slack_rtm_json_init(sa, "presence_sub");
+	GString *ids = g_string_new("[");
 	GHashTableIter iter;
 	gpointer id;
 	SlackUser *user;
 	g_hash_table_iter_init(&iter, sa->ims);
-	g_string_append(json, ",\"ids\":[");
 	gboolean first = TRUE;
 	while (g_hash_table_iter_next(&iter, &id, (gpointer*)&user)) {
 		if (first)
 			first = FALSE;
 		else
-			g_string_append_c(json, ',');
-		append_json_string(json, user->object.id);
+			g_string_append_c(ids, ',');
+		append_json_string(ids, user->object.id);
 	}
-	g_string_append(json, "]}");
+	g_string_append_c(ids, ']');
 
-	slack_rtm_send(sa, json);
-	g_string_free(json, TRUE);
+	slack_rtm_send(sa, "presence_sub", "ids", ids->str, NULL);
+	g_string_free(ids, TRUE);
 }
 
 static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
@@ -101,9 +100,7 @@ void slack_im_opened(SlackAccount *sa, json_value *json) {
 		slack_presence_sub(sa);
 }
 
-static void im_list_cb(SlackAPICall *api, gpointer data, json_value *json, const char *error) {
-	SlackAccount *sa = data;
-
+static void im_list_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
 	json_value *ims = json_get_prop_type(json, "ims", array);
 	if (!ims) {
 		purple_connection_error_reason(sa->gc,
@@ -122,9 +119,62 @@ static void im_list_cb(SlackAPICall *api, gpointer data, json_value *json, const
 
 void slack_ims_load(SlackAccount *sa) {
 	purple_connection_update_progress(sa->gc, "Loading IM channels", 5, SLACK_CONNECT_STEPS);
-	slack_api_call(sa, "im.list", NULL, im_list_cb, sa);
+	slack_api_call(sa, im_list_cb, NULL, "im.list", NULL);
 }
 
-int slack_send_im(PurpleConnection *gc, const char *who, const char *message, PurpleMessageFlags flags) {
-	return -ENOTSUP;
+struct send_im {
+	SlackUser *user;
+	char *msg;
+	PurpleMessageFlags flags;
+};
+
+static void send_im_free(struct send_im *send) {
+	g_object_unref(send->user);
+	g_free(send->msg);
+	g_free(send);
+}
+
+static void send_im_open_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
+	struct send_im *send = data;
+
+	json = json_get_prop_type(json, "channel", object);
+	if (json)
+		im_update(sa, json, TRUE);
+
+	if (error || !*send->user->im) {
+		purple_conv_present_error(send->user->name, sa->account, error ?: "failed to open IM channel");
+		send_im_free(send);
+		return;
+	}
+
+	GString *channel = append_json_string(g_string_new(NULL), send->user->im);
+	GString *text = append_json_string(g_string_new(NULL), send->msg);
+	slack_rtm_send(sa, "message", "channel", channel->str, "text", text->str, NULL);
+	g_string_free(channel, TRUE);
+	g_string_free(text, TRUE);
+	send_im_free(send);
+}
+
+int slack_send_im(PurpleConnection *gc, const char *who, const char *msg, PurpleMessageFlags flags) {
+	SlackAccount *sa = gc->proto_data;
+
+	glong mlen = g_utf8_strlen(msg, 16384);
+	if (mlen > 4000)
+		return -E2BIG;
+
+	SlackUser *user = g_hash_table_lookup(sa->user_names, who);
+	if (!user)
+		return -ENOENT;
+
+	struct send_im *send = g_new(struct send_im, 1);
+	send->user = g_object_ref(user);
+	send->msg = g_strdup(msg);
+	send->flags = flags;
+
+	if (!*user->im)
+		slack_api_call(sa, send_im_open_cb, send, "im.open", "user", user->object.id, "return_im", "true", NULL);
+	else
+		send_im_open_cb(sa, send, NULL, NULL);
+
+	return 1;
 }

@@ -66,8 +66,7 @@ static void rtm_cb(PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp op, con
 	json_value_free(json);
 }
 
-static void rtm_connect_cb(SlackAPICall *api, gpointer data, json_value *json, const char *error) {
-	SlackAccount *sa = data;
+static void rtm_connect_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
 
 	if (sa->rtm) {
 		purple_websocket_abort(sa->rtm);
@@ -111,20 +110,25 @@ static void rtm_connect_cb(SlackAPICall *api, gpointer data, json_value *json, c
 	sa->rtm = purple_websocket_connect(sa->account, url->u.string.ptr, NULL, rtm_cb, sa);
 }
 
-GString *slack_rtm_json_init(SlackAccount *sa, const char *type) {
+void slack_rtm_send(SlackAccount *sa, const char *type, ...) {
 	GString *json = g_string_new(NULL);
 	g_string_printf(json, "{\"id\":%u,\"type\":\"%s\"", ++sa->rtm_id, type);
-	return json;
-}
-
-void slack_rtm_send(SlackAccount *sa, const GString *json) {
+	va_list qargs;
+	va_start(qargs, type);
+	const char *key;
+	while ((key = va_arg(qargs, const char*))) {
+		const char *val = va_arg(qargs, const char*);
+		g_string_append_printf(json, ",\"%s\":%s", key, val);
+	}
+	va_end(qargs);
+	g_string_append_c(json, '}');
 	g_return_if_fail(json->len > 0 && json->len <= 16384);
-	g_return_if_fail(json->str[0] == '{' && json->str[json->len-1] == '}');
 	purple_debug_misc("slack", "RTM: %.*s\n", (int)json->len, json->str);
 	purple_websocket_send(sa->rtm, PURPLE_WEBSOCKET_TEXT, (guchar*)json->str, json->len);
+	g_string_free(json, TRUE);
 }
 
 void slack_rtm_connect(SlackAccount *sa) {
 	purple_connection_update_progress(sa->gc, "Requesting RTM", 1, SLACK_CONNECT_STEPS);
-	slack_api_call(sa, "rtm.connect", "batch_presence_aware=1", rtm_connect_cb, sa);
+	slack_api_call(sa, rtm_connect_cb, NULL, "rtm.connect", "batch_presence_aware", "1", NULL);
 }

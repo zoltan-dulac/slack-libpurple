@@ -8,8 +8,8 @@
 
 typedef struct _SlackAPICall SlackAPICall;
 
-typedef void (*SlackAPICallback)(SlackAPICall *api, gpointer user_data, json_value *json, const char *error);
+typedef void (*SlackAPICallback)(SlackAccount *sa, gpointer user_data, json_value *json, const char *error);
 
-SlackAPICall *slack_api_call(SlackAccount *sa, const char *method, const char *query, SlackAPICallback calback, gpointer data);
+void slack_api_call(SlackAccount *sa, SlackAPICallback callback, gpointer data, const char *method, /* const char *query_param1, const char *query_value1, */ ...) G_GNUC_NULL_TERMINATED;
 
 #endif
