@@ -56,6 +56,7 @@ static void rtm_cb(PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp op, con
 	json_value *type = json_get_prop_type(json, "type", string);
 	if (!type)
 	{
+		/* TODO: reply_to */
 		purple_debug_error("slack", "RTM: %.*s\n", (int)len, msg);
 		purple_connection_error_reason(sa->gc,
 				PURPLE_CONNECTION_ERROR_NETWORK_ERROR,

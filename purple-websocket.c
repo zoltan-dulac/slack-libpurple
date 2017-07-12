@@ -283,7 +283,8 @@ static gboolean ws_input(PurpleWebsocket *ws) {
 static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCondition cond) {
 	PurpleWebsocket *ws = data;
 
-	if (cond & PURPLE_INPUT_WRITE) {
+	while (cond & PURPLE_INPUT_WRITE) {
+		g_return_if_fail(ws->output.off < ws->output.len);
 		ssize_t len = ws->ssl_connection
 			? (ssize_t)purple_ssl_write(ws->ssl_connection, ws->output.buf + ws->output.off, ws->output.len - ws->output.off)
 			: write(ws->fd, ws->output.buf + ws->output.off, ws->output.len - ws->output.off);
@@ -293,9 +294,12 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 				ws_error(ws, g_strerror(errno));
 				return;
 			}
-		} else if ((ws->output.off += len) >= ws->output.len)
+			cond &= ~PURPLE_INPUT_WRITE;
+		} else if ((ws->output.off += len) >= ws->output.len) {
 			if (!ws_input(ws))
 				return;
+			break;
+		}
 
 		/*
 		gchar *enc = purple_base16_encode(ws->output.buf + ws->output.off, len);
@@ -304,16 +308,18 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 		*/
 	}
 
-	if (cond & PURPLE_INPUT_READ) {
+	while (cond & PURPLE_INPUT_READ) {
+		g_return_if_fail(ws->input.off < ws->input.len);
 		ssize_t len = ws->ssl_connection
-			? (ssize_t)purple_ssl_read(ws->ssl_connection, ws->input.buf + ws->input.off, ws->input.len - ws->input.off)
-			: read(ws->fd, ws->input.buf + ws->input.off, ws->input.len - ws->input.off);
+			? (ssize_t)purple_ssl_read(ws->ssl_connection, ws->input.buf + ws->input.off, ws->input.siz - ws->input.off)
+			: read(ws->fd, ws->input.buf + ws->input.off, ws->input.siz - ws->input.off);
 
 		if (len < 0) {
 			if (errno != EAGAIN) {
 				ws_error(ws, g_strerror(errno));
 				return;
 			}
+			cond &= ~PURPLE_INPUT_READ;
 		}
 		else if (len == 0) {
 			ws_error(ws, "Connection closed");
