@@ -7,6 +7,7 @@
 #include "slack-user.h"
 #include "slack-im.h"
 #include "slack-blist.h"
+#include "slack-message.h"
 #include "slack-rtm.h"
 
 struct _SlackRTMCall {
@@ -16,12 +17,12 @@ struct _SlackRTMCall {
 };
 
 static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
-	if (!strcmp(type, "hello")) {
-		slack_users_load(sa);
+	if (!strcmp(type, "message")) {
+		slack_message(sa, json);
 	}
-	else if (!strcmp(type, "user_changed") ||
-		 !strcmp(type, "team_join")) {
-		slack_user_changed(sa, json);
+	else if (!strcmp(type, "presence_change") ||
+	         !strcmp(type, "presence_change_batch")) {
+		slack_presence_change(sa, json);
 	}
 	else if (!strcmp(type, "im_closed")) {
 		slack_im_closed(sa, json);
@@ -29,9 +30,12 @@ static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
 	else if (!strcmp(type, "im_open")) {
 		slack_im_opened(sa, json);
 	}
-	else if (!strcmp(type, "presence_change") ||
-	         !strcmp(type, "presence_change_batch")) {
-		slack_presence_change(sa, json);
+	else if (!strcmp(type, "user_changed") ||
+		 !strcmp(type, "team_join")) {
+		slack_user_changed(sa, json);
+	}
+	else if (!strcmp(type, "hello")) {
+		slack_users_load(sa);
 	}
 	else {
 		purple_debug_info("slack", "Unhandled RTM type %s\n", type);
@@ -60,7 +64,7 @@ static void rtm_cb(PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp op, con
 
 	json_value *json = json_parse((const char *)msg, len);
 	json_value *reply_to = json_get_prop_type(json, "reply_to", integer);
-	json_value *type = json_get_prop_type(json, "type", string);
+	const char *type = json_get_prop_strptr(json, "type");
 
 	if (reply_to) {
 		SlackRTMCall *call = g_hash_table_lookup(sa->rtm_call, GUINT_TO_POINTER(reply_to->u.integer));
@@ -79,7 +83,7 @@ static void rtm_cb(PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp op, con
 		}
 	}
 	else if (type)
-		rtm_msg(sa, type->u.string.ptr, json);
+		rtm_msg(sa, type, json);
 	else {
 		purple_debug_error("slack", "RTM: %.*s\n", (int)len, msg);
 		purple_connection_error_reason(sa->gc,
@@ -97,9 +101,9 @@ static void rtm_connect_cb(SlackAccount *sa, gpointer data, json_value *json, co
 		sa->rtm = NULL;
 	}
 
-	json_value *url = json_get_prop_type(json, "url", string);
-	json_value *self = json_get_prop_type(json, "self", object);
-	json_value *self_id = json_get_prop_type(self, "id", string);
+	const char *url     = json_get_prop_strptr(json, "url");
+	json_value *self    = json_get_prop_type(json, "self", object);
+	const char *self_id = json_get_prop_strptr(self, "id");
 
 	if (!url || !self_id) {
 		purple_connection_error_reason(sa->gc,
@@ -108,16 +112,16 @@ static void rtm_connect_cb(SlackAccount *sa, gpointer data, json_value *json, co
 	}
 
 #define SET_STR(FIELD, JSON, PROP) ({ \
-		json_value *_j = json_get_prop_type(JSON, PROP, string); \
+		const char *_j = json_get_prop_strptr(JSON, PROP); \
 		g_free(sa->FIELD); \
-		sa->FIELD = g_strdup(_j ? _j->u.string.ptr : NULL); \
+		sa->FIELD = g_strdup(_j); \
 	})
 
 	SET_STR(self, self, "id");
 
-	json_value *self_name = json_get_prop_type(self, "name", string);
+	const char *self_name = json_get_prop_strptr(self, "name");
 	if (self_name)
-		purple_connection_set_display_name(sa->gc, self_name->u.string.ptr);
+		purple_connection_set_display_name(sa->gc, self_name);
 
 	json_value *team = json_get_prop_type(json, "team", object);
 	SET_STR(team.id, team, "id");
@@ -130,8 +134,8 @@ static void rtm_connect_cb(SlackAccount *sa, gpointer data, json_value *json, co
 	slack_blist_init(sa);
 
 	purple_connection_update_progress(sa->gc, "Connecting to RTM", 2, SLACK_CONNECT_STEPS);
-	purple_debug_info("slack", "RTM URL: %s\n", url->u.string.ptr);
-	sa->rtm = purple_websocket_connect(sa->account, url->u.string.ptr, NULL, rtm_cb, sa);
+	purple_debug_info("slack", "RTM URL: %s\n", url);
+	sa->rtm = purple_websocket_connect(sa->account, url, NULL, rtm_cb, sa);
 }
 
 void slack_rtm_cancel(SlackRTMCall *call) {
@@ -172,5 +176,5 @@ void slack_rtm_send(SlackAccount *sa, SlackRTMCallback *callback, gpointer user_
 
 void slack_rtm_connect(SlackAccount *sa) {
 	purple_connection_update_progress(sa->gc, "Requesting RTM", 1, SLACK_CONNECT_STEPS);
-	slack_api_call(sa, rtm_connect_cb, NULL, "rtm.connect", "batch_presence_aware", "1", NULL);
+	slack_api_call(sa, rtm_connect_cb, NULL, "rtm.connect", "batch_presence_aware", "1", "presence_sub", "true", NULL);
 }

@@ -1,9 +1,8 @@
 #ifndef _PURPLE_SLACK_IM_H
 #define _PURPLE_SLACK_IM_H
 
-#include "slack-json.h"
-#include "slack-object.h"
-#include "slack-user.h"
+#include <json.h>
+
 #include "slack.h"
 
 void slack_im_closed(SlackAccount *sa, json_value *json);

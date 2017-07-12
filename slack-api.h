@@ -1,7 +1,6 @@
 #ifndef _PURPLE_SLACK_API_H
 #define _PURPLE_SLACK_API_H
 
-#include <glib.h>
 #include <json.h>
 
 #include "slack.h"

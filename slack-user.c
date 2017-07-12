@@ -24,11 +24,11 @@ static void slack_user_init(SlackUser *self) {
 }
 
 static gboolean user_update(SlackAccount *sa, json_value *json) {
-	json_value *jid = json_get_prop_type(json, "id", string);
-	if (!jid)
+	const char *sid = json_get_prop_strptr(json, "id");
+	if (!sid)
 		return FALSE;
 	slack_object_id id;
-	slack_object_id_set(id, jid->u.string.ptr);
+	slack_object_id_set(id, sid);
 
 	SlackUser *user = g_hash_table_lookup(sa->users, id);
 
@@ -53,17 +53,17 @@ static gboolean user_update(SlackAccount *sa, json_value *json) {
 		changed = TRUE;
 	}
 
-	json_value *name = json_get_prop_type(json, "name", string);
+	const char *name = json_get_prop_strptr(json, "name");
 
 	if (!name)
-		purple_debug_warning("slack", "user %s missing name\n", jid->u.string.ptr);
-	else if (g_strcmp0(user->name, name->u.string.ptr)) {
-		purple_debug_misc("slack", "user %s: %s\n", jid->u.string.ptr, name->u.string.ptr);
+		purple_debug_warning("slack", "user %s missing name\n", sid);
+	else if (g_strcmp0(user->name, name)) {
+		purple_debug_misc("slack", "user %s: %s\n", sid, name);
 
 		if (user->name)
 			g_hash_table_remove(sa->user_names, user->name);
 		g_free(user->name);
-		user->name = g_strdup(name->u.string.ptr);
+		user->name = g_strdup(name);
 		g_hash_table_insert(sa->user_names, user->name, user);
 		changed = TRUE;
 	}
@@ -119,14 +119,14 @@ void slack_presence_change(SlackAccount *sa, json_value *json) {
 	json_value *users = json_get_prop(json, "users");
 	if (!users)
 		users = json_get_prop(json, "user");
-	json_value *presence = json_get_prop_type(json, "presence", string);
+	const char *presence = json_get_prop_strptr(json, "presence");
 	if (!users || !presence)
 		return;
 
 	if (users->type == json_array)
 		for (unsigned i = 0; i < users->u.array.length; i ++)
-			presence_set(sa, users->u.array.values[i], presence->u.string.ptr);
+			presence_set(sa, users->u.array.values[i], presence);
 	else
-		presence_set(sa, users, presence->u.string.ptr);
+		presence_set(sa, users, presence);
 }
 

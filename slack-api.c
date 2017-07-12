@@ -28,8 +28,8 @@ static void api_cb(G_GNUC_UNUSED PurpleUtilFetchUrlData *fetch, gpointer data, c
 
 	json_value *ok = json_get_prop_type(json, "ok", boolean);
 	if (!ok || !ok->u.boolean) {
-		json_value *err = json_get_prop_type(json, "error", string);
-		api_error(call, err ? err->u.string.ptr : "Unknown error");
+		const char *err = json_get_prop_strptr(json, "error");
+		api_error(call, err ?: "Unknown error");
 	} else {
 		call->callback(call->sa, call->data, json, NULL);
 	}

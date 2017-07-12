@@ -5,6 +5,7 @@
 #include "slack-api.h"
 #include "slack-rtm.h"
 #include "slack-blist.h"
+#include "slack-user.h"
 #include "slack-im.h"
 
 static void slack_presence_sub(SlackAccount *sa) {
@@ -28,13 +29,13 @@ static void slack_presence_sub(SlackAccount *sa) {
 }
 
 static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
-	json_value *jid = json_get_prop_type(json, "id", string);
-	if (!jid)
-		jid = json_get_prop_type(json, "channel", string);
-	if (!jid)
+	const char *sid = json_get_prop_strptr(json, "id");
+	if (!sid)
+		sid = json_get_prop_strptr(json, "channel");
+	if (!sid)
 		return FALSE;
 	slack_object_id id;
-	slack_object_id_set(id, jid->u.string.ptr);
+	slack_object_id_set(id, sid);
 
 	SlackUser *user = g_hash_table_lookup(sa->ims, id);
 
@@ -54,11 +55,11 @@ static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
 
 	gboolean changed = FALSE;
 
-	json_value *user_id = json_get_prop_type(json, "user", string);
+	const char *user_id = json_get_prop_strptr(json, "user");
 	g_return_val_if_fail(user_id, FALSE);
 
 	if (!user) {
-		user = (SlackUser *)slack_object_hash_table_lookup(sa->users, user_id->u.string.ptr);
+		user = (SlackUser *)slack_object_hash_table_lookup(sa->users, user_id);
 		if (!user)
 			return FALSE;
 		if (slack_object_id_cmp(user->im, id)) {
@@ -69,10 +70,10 @@ static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
 			changed = TRUE;
 		}
 	} else
-		g_warn_if_fail(slack_object_id_is(user->object.id, user_id->u.string.ptr));
+		g_warn_if_fail(slack_object_id_is(user->object.id, user_id));
 
 	if (!user->buddy) {
-		user->buddy = g_hash_table_lookup(sa->buddies, jid->u.string.ptr);
+		user->buddy = g_hash_table_lookup(sa->buddies, sid);
 		if (user->buddy && PURPLE_BLIST_NODE_IS_BUDDY(PURPLE_BLIST_NODE(user->buddy))) {
 			if (user->name && strcmp(user->name, purple_buddy_get_name(user->buddy))) {
 				purple_blist_rename_buddy(user->buddy, user->name);
@@ -80,7 +81,7 @@ static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
 			}
 		} else {
 			user->buddy = purple_buddy_new(sa->account, user->name, NULL);
-			slack_blist_cache(sa, &user->buddy->node, jid->u.string.ptr);
+			slack_blist_cache(sa, &user->buddy->node, sid);
 			purple_blist_add_buddy(user->buddy, NULL, sa->blist, NULL);
 			changed = TRUE;
 		}
