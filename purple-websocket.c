@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 
 #include <cipher.h>
 #include <debug.h>
@@ -203,7 +204,7 @@ static size_t ws_read_message(PurpleWebsocket *ws) {
 				plen = GUINT64_FROM_BE(GET(uint64_t));
 				break;
 			case 126:
-				plen = GUINT16_FROM_BE(GET(uint16_t));
+				plen = ntohs(GET(uint16_t));
 				break;
 		}
 		frag[fi].l = plen;
@@ -297,8 +298,8 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 				return;
 
 		/*
-		gchar *enc = g_base64_encode(ws->output.buf + ws->output.off, len);
-		purple_debug_misc("websocket", "sending: %s\n", enc);
+		gchar *enc = purple_base16_encode(ws->output.buf + ws->output.off, len);
+		purple_debug_misc("websocket", "send: %s\n", enc);
 		g_free(enc);
 		*/
 	}
@@ -318,6 +319,12 @@ static void ws_input_cb(gpointer data, G_GNUC_UNUSED gint source, PurpleInputCon
 			ws_error(ws, "Connection closed");
 			return;
 		} else {
+			/*
+			gchar *enc = purple_base16_encode(ws->input.buf + ws->input.off, len);
+			purple_debug_misc("websocket", "recv %zu/%zu: %s\n", ws->input.off+len, ws->input.len, enc);
+			g_free(enc);
+			*/
+
 			ws->input.off += len;
 
 			if (!ws->connected) {
@@ -376,7 +383,7 @@ void purple_websocket_send(PurpleWebsocket *ws, PurpleWebsocketOp op, const guch
 		ADD(uint64_t, GUINT64_TO_BE(len));
 	} else if (len >= 126) {
 		ADD(uint8_t, WS_MASK | 126);
-		ADD(uint16_t, GUINT16_TO_BE(len));
+		ADD(uint16_t, htons(len));
 	} else {
 		ADD(uint8_t, WS_MASK | len);
 	}
