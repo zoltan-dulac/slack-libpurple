@@ -23,6 +23,7 @@ struct _SlackChannel {
 
 	SlackChannelType type;
 	PurpleChat *buddy;
+	int cid;
 };
 
 #define SLACK_TYPE_CHANNEL slack_channel_get_type()

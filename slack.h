@@ -31,6 +31,9 @@ typedef struct _SlackAccount {
 	GHashTable *ims; /* slack_object_id im_id -> SlackUser (no ref) */
 
 	GHashTable *channels; /* slack_object_id channel_id -> SlackChannel (ref) */
+	GHashTable *channel_names; /* char *chan_name -> SlackChannel (no ref) */
+	int cid;
+	GHashTable *channel_cids; /* int purple_chat_id -> SlackChannel (no ref) */
 
 	PurpleGroup *blist; /* default group for ims/channels */
 	GHashTable *buddies; /* char *slack_id -> PurpleBListNode */

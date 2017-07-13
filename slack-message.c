@@ -28,7 +28,9 @@ void slack_message(SlackAccount *sa, json_value *json) {
 		serv_got_im(sa->gc, user->name, text, flags, mt);
 	} else if ((chan = channel_id ? (SlackChannel*)slack_object_hash_table_lookup(sa->channels, channel_id) : NULL)) {
 		/* Channel */
-		// serv_got_chat_in(sa->gc, XXX, user ? user->name : user_id ?: "", flags, text, mt);
+		if (!chan->cid)
+			return;
+		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, text, mt);
 	} else {
 		purple_debug_warning("slack", "Unhandled message: %s@%s: %s\n", user_id, channel_id, text);
 	}

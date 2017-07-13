@@ -49,6 +49,29 @@ static void slack_get_info(PurpleConnection *gc, const char *who) {
 	purple_notify_user_info_destroy(info);
 }
 
+static GList *slack_chat_info(PurpleConnection *gc) {
+	GList *l = NULL;
+
+	struct proto_chat_entry *e;
+	e = g_new0(struct proto_chat_entry, 1);
+	e->label = "_Channel:";
+	e->identifier = "name";
+	e->required = TRUE;
+	l = g_list_append(l, e);
+
+	return l;
+}
+
+static GHashTable *slack_chat_info_defaults(PurpleConnection *gc, const char *name) {
+	GHashTable *info = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
+
+	if (name)
+		g_hash_table_insert(info, "name", g_strdup(name));
+	/* we could look up the channel here and add more... */
+
+	return info;
+}
+
 static void slack_login(PurpleAccount *account) {
 	PurpleConnection *gc = purple_account_get_connection(account);
 
@@ -77,6 +100,8 @@ static void slack_login(PurpleAccount *account) {
 	sa->ims      = g_hash_table_new_full(slack_object_id_hash, slack_object_id_equal, NULL, NULL);
 
 	sa->channels = g_hash_table_new_full(slack_object_id_hash, slack_object_id_equal, NULL, g_object_unref);
+	sa->channel_names = g_hash_table_new_full(g_str_hash,      g_str_equal,           NULL, NULL);
+	sa->channel_cids = g_hash_table_new_full(g_direct_hash,    g_direct_equal,        NULL, NULL);
 
 	sa->buddies = g_hash_table_new_full(/* slack_object_id_hash, slack_object_id_equal, */ g_str_hash, g_str_equal, NULL, NULL);
 
@@ -109,6 +134,8 @@ static void slack_close(PurpleConnection *gc) {
 
 	g_hash_table_destroy(sa->buddies);
 
+	g_hash_table_destroy(sa->channel_cids);
+	g_hash_table_destroy(sa->channel_names);
 	g_hash_table_destroy(sa->channels);
 
 	g_hash_table_destroy(sa->ims);
@@ -137,8 +164,8 @@ static PurplePluginProtocolInfo prpl_info = {
 	NULL,			/* tooltip_text */
 	slack_status_types,	/* status_types */
 	NULL,			/* blist_node_menu */
-	NULL,			/* chat_info */
-	NULL,			/* chat_info_defaults */
+	slack_chat_info,	/* chat_info */
+	slack_chat_info_defaults, /* chat_info_defaults */
 	slack_login,		/* login */
 	slack_close,		/* close */
 	slack_send_im,		/* send_im */
@@ -214,9 +241,9 @@ static PurplePluginInfo info = {
     PURPLE_PRIORITY_DEFAULT,
     SLACK_PLUGIN_ID,
     "Slack",
-    "0.1" ,
-    "Slack protocol plugin",          
-    "Add slack protocol support to libpurple.",          
+    "0.1",
+    "Slack protocol plugin",
+    "Slack protocol support for libpurple.",
     "Dylan Simon <dylan@dylex.net>, Valeriy Golenkov <valery.golenkov@gmail.com>",                          
     "http://github.com/dylex/slack-libpurple",     
     NULL,                   
