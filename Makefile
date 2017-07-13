@@ -28,7 +28,7 @@ PKGS=$(PURPLE_MOD) json-parser
 CFLAGS = \
     -g \
     -O2 \
-    -Wall \
+    -Wall -Werror \
     -fPIC \
     -D_DEFAULT_SOURCE=1 \
     -std=c99 \
@@ -68,5 +68,6 @@ clean:
 	rm -f *.o $(LIBNAME) Makefile.dep
 
 Makefile.dep: $(C_SRCS)
+	pkg-config --modversion $(PKGS)
 	$(CC) -MM $(CFLAGS) $^ > Makefile.dep
 include Makefile.dep
