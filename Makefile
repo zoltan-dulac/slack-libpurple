@@ -5,6 +5,7 @@ all: $(LIBNAME)
 
 C_SRCS = slack.c \
 	 slack-message.c \
+	 slack-channel.c \
 	 slack-im.c \
 	 slack-user.c \
 	 slack-rtm.c \

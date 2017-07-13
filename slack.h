@@ -7,7 +7,7 @@
 
 #define SLACK_PLUGIN_ID "prpl-slack"
 
-#define SLACK_CONNECT_STEPS 6
+#define SLACK_CONNECT_STEPS 8
 
 typedef struct _SlackAccount {
 	PurpleAccount *account;
@@ -29,10 +29,8 @@ typedef struct _SlackAccount {
 	GHashTable *users; /* slack_object_id user_id -> SlackUser (ref) */
 	GHashTable *user_names; /* char *user_name -> SlackUser (no ref) */
 	GHashTable *ims; /* slack_object_id im_id -> SlackUser (no ref) */
-	/*
-	GHashTable *channels;
-	GHashTable *groups;
-	*/
+
+	GHashTable *channels; /* slack_object_id channel_id -> SlackChannel (ref) */
 
 	PurpleGroup *blist; /* default group for ims/channels */
 	GHashTable *buddies; /* char *slack_id -> PurpleBListNode */

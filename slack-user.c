@@ -1,5 +1,6 @@
 #include <debug.h>
 
+#include "slack-json.h"
 #include "slack-api.h"
 #include "slack-user.h"
 #include "slack-im.h"
@@ -32,15 +33,14 @@ static gboolean user_update(SlackAccount *sa, json_value *json) {
 
 	SlackUser *user = g_hash_table_lookup(sa->users, id);
 
-	json_value *deleted = json_get_prop_type(json, "deleted", boolean);
-	if (deleted && deleted->u.boolean) {
+	if (json_get_prop_boolean(json, "deleted", FALSE)) {
 		if (!user)
 			return FALSE;
 		if (user->name)
 			g_hash_table_remove(sa->user_names, user->name);
 		if (*user->im)
 			g_hash_table_remove(sa->ims, user->im);
-		g_hash_table_remove(sa->users, user->object.id);
+		g_hash_table_remove(sa->users, id);
 		return TRUE;
 	}
 
@@ -54,10 +54,9 @@ static gboolean user_update(SlackAccount *sa, json_value *json) {
 	}
 
 	const char *name = json_get_prop_strptr(json, "name");
+	g_warn_if_fail(name);
 
-	if (!name)
-		purple_debug_warning("slack", "user %s missing name\n", sid);
-	else if (g_strcmp0(user->name, name)) {
+	if (g_strcmp0(user->name, name)) {
 		purple_debug_misc("slack", "user %s: %s\n", sid, name);
 
 		if (user->name)
@@ -65,6 +64,8 @@ static gboolean user_update(SlackAccount *sa, json_value *json) {
 		g_free(user->name);
 		user->name = g_strdup(name);
 		g_hash_table_insert(sa->user_names, user->name, user);
+		if (user->buddy)
+			purple_blist_rename_buddy(user->buddy, user->name);
 		changed = TRUE;
 	}
 

@@ -2,10 +2,12 @@
 
 #include <debug.h>
 
+#include "slack-json.h"
 #include "slack-api.h"
 #include "slack-rtm.h"
 #include "slack-blist.h"
 #include "slack-user.h"
+#include "slack-channel.h"
 #include "slack-im.h"
 
 static void slack_presence_sub(SlackAccount *sa) {
@@ -29,9 +31,11 @@ static void slack_presence_sub(SlackAccount *sa) {
 }
 
 static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
-	const char *sid = json_get_prop_strptr(json, "id");
-	if (!sid)
-		sid = json_get_prop_strptr(json, "channel");
+	const char *sid = json_get_strptr(json);
+	if (sid)
+		json = NULL;
+	else
+		sid = json_get_prop_strptr(json, "id");
 	if (!sid)
 		return FALSE;
 	slack_object_id id;
@@ -39,14 +43,14 @@ static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
 
 	SlackUser *user = g_hash_table_lookup(sa->ims, id);
 
-	json_value *is_open = json_get_prop_type(json, "is_open", boolean);
-	if (!(is_open ? is_open->u.boolean : open)) {
+	if (!json_get_prop_boolean(json, "is_open", open)) {
 		if (!user)
 			return FALSE;
 		g_return_val_if_fail(*user->im, FALSE);
 		g_hash_table_remove(sa->ims, user->im);
 		slack_object_id_clear(user->im);
 		if (user->buddy) {
+			slack_blist_uncache(sa, &user->buddy->node);
 			purple_blist_remove_buddy(user->buddy);
 			user->buddy = NULL;
 		}
@@ -91,13 +95,13 @@ static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
 	return changed;
 }
 
-void slack_im_closed(SlackAccount *sa, json_value *json) {
-	if (im_update(sa, json, FALSE))
+void slack_im_close(SlackAccount *sa, json_value *json) {
+	if (im_update(sa, json_get_prop(json, "channel"), FALSE))
 		slack_presence_sub(sa);
 }
 
-void slack_im_opened(SlackAccount *sa, json_value *json) {
-	if (im_update(sa, json, TRUE))
+void slack_im_open(SlackAccount *sa, json_value *json) {
+	if (im_update(sa, json_get_prop(json, "channel"), TRUE))
 		slack_presence_sub(sa);
 }
 
@@ -115,7 +119,7 @@ static void im_list_cb(SlackAccount *sa, gpointer data, json_value *json, const 
 
 	slack_presence_sub(sa);
 
-	purple_connection_set_state(sa->gc, PURPLE_CONNECTED);
+	slack_channels_load(sa);
 }
 
 void slack_ims_load(SlackAccount *sa) {

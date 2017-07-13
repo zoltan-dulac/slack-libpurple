@@ -8,6 +8,7 @@
 #include "slack-im.h"
 #include "slack-blist.h"
 #include "slack-message.h"
+#include "slack-channel.h"
 #include "slack-rtm.h"
 
 struct _SlackRTMCall {
@@ -24,15 +25,37 @@ static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
 	         !strcmp(type, "presence_change_batch")) {
 		slack_presence_change(sa, json);
 	}
-	else if (!strcmp(type, "im_closed")) {
-		slack_im_closed(sa, json);
+	else if (!strcmp(type, "im_close")) {
+		slack_im_close(sa, json);
 	}
 	else if (!strcmp(type, "im_open")) {
-		slack_im_opened(sa, json);
+		slack_im_open(sa, json);
 	}
 	else if (!strcmp(type, "user_changed") ||
 		 !strcmp(type, "team_join")) {
 		slack_user_changed(sa, json);
+	}
+	else if (!strcmp(type, "channel_joined")) {
+		slack_channel_update(sa, json, SLACK_CHANNEL_MEMBER);
+	}
+	else if (!strcmp(type, "group_joined") ||
+		 !strcmp(type, "group_unarchive")) {
+		slack_channel_update(sa, json, SLACK_CHANNEL_GROUP);
+	}
+	else if (!strcmp(type, "channel_left") ||
+	         !strcmp(type, "channel_created") ||
+	         !strcmp(type, "channel_unarchive")) {
+		slack_channel_update(sa, json, SLACK_CHANNEL_PUBLIC);
+	}
+	else if (!strcmp(type, "channel_rename") ||
+		 !strcmp(type, "group_rename")) {
+		slack_channel_update(sa, json, SLACK_CHANNEL_UNKNOWN);
+	}
+	else if (!strcmp(type, "channel_archive") ||
+		 !strcmp(type, "channel_deleted") ||
+		 !strcmp(type, "group_archive") ||
+		 !strcmp(type, "group_left")) {
+		slack_channel_update(sa, json, SLACK_CHANNEL_DELETED);
 	}
 	else if (!strcmp(type, "hello")) {
 		slack_users_load(sa);

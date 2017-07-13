@@ -26,8 +26,7 @@ static void api_cb(G_GNUC_UNUSED PurpleUtilFetchUrlData *fetch, gpointer data, c
 		return;
 	}
 
-	json_value *ok = json_get_prop_type(json, "ok", boolean);
-	if (!ok || !ok->u.boolean) {
+	if (!json_get_prop_boolean(json, "ok", FALSE)) {
 		const char *err = json_get_prop_strptr(json, "error");
 		api_error(call, err ?: "Unknown error");
 	} else {

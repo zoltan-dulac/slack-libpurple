@@ -13,6 +13,8 @@
 #include "slack-rtm.h"
 #include "slack-user.h"
 #include "slack-im.h"
+#include "slack-channel.h"
+#include "slack-blist.h"
 
 static const char *slack_list_icon(G_GNUC_UNUSED PurpleAccount * account, G_GNUC_UNUSED PurpleBuddy * buddy) {
 	return "slack";
@@ -73,10 +75,8 @@ static void slack_login(PurpleAccount *account) {
 	sa->users    = g_hash_table_new_full(slack_object_id_hash, slack_object_id_equal, NULL, g_object_unref);
 	sa->user_names = g_hash_table_new_full(g_str_hash,         g_str_equal,           NULL, NULL);
 	sa->ims      = g_hash_table_new_full(slack_object_id_hash, slack_object_id_equal, NULL, NULL);
-	/*
-	sa->channels = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_channel_free);
-	sa->groups   = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)slack_group_free);
-	*/
+
+	sa->channels = g_hash_table_new_full(slack_object_id_hash, slack_object_id_equal, NULL, g_object_unref);
 
 	sa->buddies = g_hash_table_new_full(/* slack_object_id_hash, slack_object_id_equal, */ g_str_hash, g_str_equal, NULL, NULL);
 
@@ -91,6 +91,8 @@ static void slack_login(PurpleAccount *account) {
 		   rtm_msg("hello")
 		4. slack_users_load
 		5. slack_ims_load
+		6. slack_channels_load
+		7. slack_groups_load
 	*/
 	slack_rtm_connect(sa);
 }
@@ -103,15 +105,11 @@ static void slack_close(PurpleConnection *gc) {
 
 	if (sa->rtm)
 		purple_websocket_abort(sa->rtm);
-
 	g_hash_table_destroy(sa->rtm_call);
 
 	g_hash_table_destroy(sa->buddies);
 
-	/*
-	g_hash_table_destroy(sa->groups);
 	g_hash_table_destroy(sa->channels);
-	*/
 
 	g_hash_table_destroy(sa->ims);
 	g_hash_table_destroy(sa->user_names);
@@ -165,7 +163,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	NULL,			/* chat_invite */
 	NULL,			/* chat_leave */
 	NULL,			/* chat_whisper */
-	NULL,			/* chat_send */
+	slack_chat_send,	/* chat_send */
 	NULL,			/* keepalive */
 	NULL,			/* register_user */
 	NULL,			/* get_cb_info */
@@ -173,7 +171,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	NULL,			/* alias_buddy */
 	NULL,			/* group_buddy */
 	NULL,			/* rename_group */
-	NULL,			/* buddy_free */
+	slack_buddy_free,	/* buddy_free */
 	NULL,			/* convo_closed */
 	NULL,			/* normalize */
 	NULL,			/* set_buddy_icon */

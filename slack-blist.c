@@ -17,6 +17,12 @@ void slack_blist_cache(SlackAccount *sa, PurpleBlistNode *b, const char *id) {
 		g_hash_table_insert(sa->buddies, (gpointer)bid, b);
 }
 
+void slack_buddy_free(PurpleBuddy *b) {
+	/* This should be unnecessary, as there's no analogue for PurpleChat so we have to deal with cleanup elsewhere anyway */
+	if (b->account->gc && b->account->gc->proto_data)
+	slack_blist_uncache(b->account->gc->proto_data, &b->node);
+}
+
 void slack_blist_init(SlackAccount *sa) {
 	char *id = sa->team.id ?: "";
 	if (!sa->blist) {
