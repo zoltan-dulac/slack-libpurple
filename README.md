@@ -19,7 +19,7 @@ Here's how slack concepts are mapped to purple:
 ## Status
 
 - [x] Basic IM (direct message) functionality
-- [ ] Basic channel (chat) functionality
+- [x] Basic channel (chat) functionality
 - [ ] Apply buddy changes to open/close channels
 - [ ] Proper message formatting (for @mentions and such)
 - [ ] Set presence/status
