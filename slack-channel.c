@@ -110,19 +110,15 @@ static void channel_update(SlackAccount *sa, json_value *json, SlackChannelType 
 		g_free(chan->name);
 		chan->name = g_strdup(name);
 		g_hash_table_insert(sa->channel_names, chan->name, chan);
-		if (chan->buddy) {
-			purple_blist_alias_chat(chan->buddy, chan->name);
-			g_hash_table_insert(purple_chat_get_components(chan->buddy), "name", g_strdup(chan->name));
-		}
+		if (chan->buddy)
+			g_hash_table_insert(chan->buddy->components, g_strdup("name"), g_strdup(chan->name));
 	}
 
 	if (!chan->buddy && chan->type >= SLACK_CHANNEL_MEMBER) {
 		chan->buddy = g_hash_table_lookup(sa->buddies, sid);
 		if (chan->buddy && PURPLE_BLIST_NODE_IS_CHAT(PURPLE_BLIST_NODE(chan->buddy))) {
-			if (chan->name) {
-				purple_blist_alias_chat(chan->buddy, chan->name);
-				g_hash_table_insert(purple_chat_get_components(chan->buddy), "name", g_strdup(chan->name));
-			}
+			if (chan->name)
+				g_hash_table_insert(chan->buddy->components, g_strdup("name"), g_strdup(chan->name));
 		} else {
 			GHashTable *info = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
 			g_hash_table_insert(info, "name", g_strdup(chan->name));
@@ -197,14 +193,32 @@ void slack_join_chat(PurpleConnection *gc, GHashTable *info) {
 	serv_got_joined_chat(gc, chan->cid, name);
 }
 
+struct send_chat {
+	SlackChannel *chan;
+	int cid;
+	PurpleMessageFlags flags;
+};
+
+static void send_chat_free(struct send_chat *send) {
+	g_object_unref(send->chan);
+	g_free(send);
+}
+
 static void send_chat_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
-	SlackChannel *chan = data;
+	struct send_chat *send = data;
 
 	/* XXX better way to present chat errors? */
-	if (error)
-		purple_conv_present_error(chan->name, sa->account, error);
+	if (error) {
+		purple_conv_present_error(send->chan->name, sa->account, error);
+		send_chat_free(send);
+		return;
+	}
 
-	g_object_unref(chan);
+	const char *text       = json_get_prop_strptr(json, "text");
+	const char *ts         = json_get_prop_strptr(json, "ts");
+	time_t mt = ts ? atol(ts) : 0;
+	serv_got_chat_in(sa->gc, send->cid, purple_connection_get_display_name(sa->gc), send->flags, text, mt);
+	send_chat_free(send);
 }
 
 int slack_chat_send(PurpleConnection *gc, int cid, const char *msg, PurpleMessageFlags flags) {
@@ -218,9 +232,14 @@ int slack_chat_send(PurpleConnection *gc, int cid, const char *msg, PurpleMessag
 	if (!chan)
 		return -ENOENT;
 
+	struct send_chat *send = g_new(struct send_chat, 1);
+	send->chan = g_object_ref(chan);
+	send->cid = cid;
+	send->flags = flags;
+
 	GString *channel = append_json_string(g_string_new(NULL), chan->object.id);
 	GString *text = append_json_string(g_string_new(NULL), msg);
-	slack_rtm_send(sa, send_chat_cb, g_object_ref(chan), "message", "channel", channel->str, "text", text->str, NULL);
+	slack_rtm_send(sa, send_chat_cb, send, "message", "channel", channel->str, "text", text->str, NULL);
 	g_string_free(channel, TRUE);
 	g_string_free(text, TRUE);
 

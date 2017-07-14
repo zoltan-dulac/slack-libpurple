@@ -23,6 +23,13 @@ void slack_buddy_free(PurpleBuddy *b) {
 	slack_blist_uncache(b->account->gc->proto_data, &b->node);
 }
 
+#define PURPLE_BLIST_ACCOUNT(n) \
+	( PURPLE_BLIST_NODE_IS_BUDDY(n) \
+		? PURPLE_BUDDY(n)->account \
+	: PURPLE_BLIST_NODE_IS_CHAT(n) \
+		? PURPLE_CHAT(n)->account \
+		: NULL)
+
 void slack_blist_init(SlackAccount *sa) {
 	char *id = sa->team.id ?: "";
 	if (!sa->blist) {
@@ -43,12 +50,16 @@ void slack_blist_init(SlackAccount *sa) {
 		}
 	}
 
-	GSList *bl = purple_find_buddies(sa->account, NULL);
-	while (bl) {
-		slack_blist_cache(sa, bl->data, NULL);
+	/* Find all leaf nodes on this account (buddies and chats) with slack ids and cache them */
+	PurpleBlistNode *node;
+	for (node = purple_blist_get_root(); node; node = node->next) {
+		while (node->child)
+			node = node->child;
 
-		GSList *bt = bl;
-		bl = g_slist_next(bl);
-		g_slist_free_1(bt);
+		if (PURPLE_BLIST_ACCOUNT(node) == sa->account)
+			slack_blist_cache(sa, node, NULL);
+
+		while (node->parent && !node->next)
+			node = node->parent;
 	}
 }

@@ -63,13 +63,18 @@ static GList *slack_chat_info(PurpleConnection *gc) {
 }
 
 static GHashTable *slack_chat_info_defaults(PurpleConnection *gc, const char *name) {
-	GHashTable *info = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
+	/* While the docs say to use NULL key_destructor, libpurple actually uses g_free when loading buddies, so matching that here instead */
+	GHashTable *info = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
 	if (name)
-		g_hash_table_insert(info, "name", g_strdup(name));
+		g_hash_table_insert(info, g_strdup("name"), g_strdup(name));
 	/* we could look up the channel here and add more... */
 
 	return info;
+}
+
+static char *slack_get_chat_name(GHashTable *info) {
+	return g_hash_table_lookup(info, "name");
 }
 
 static void slack_login(PurpleAccount *account) {
@@ -184,9 +189,9 @@ static PurplePluginProtocolInfo prpl_info = {
 	NULL,			/* rem_permit */
 	NULL,			/* rem_deny */
 	NULL,			/* set_permit_deny */
-	NULL,			/* join_chat */	
+	slack_join_chat,	/* join_chat */	
 	NULL,			/* reject chat invite */
-	NULL,			/* get_chat_name */
+	slack_get_chat_name,	/* get_chat_name */
 	NULL,			/* chat_invite */
 	NULL,			/* chat_leave */
 	NULL,			/* chat_whisper */
