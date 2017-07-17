@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include "slack-channel.h"
 #include "slack-blist.h"
 
 void slack_blist_uncache(SlackAccount *sa, PurpleBlistNode *b) {
@@ -62,4 +63,16 @@ void slack_blist_init(SlackAccount *sa) {
 		while (node->parent && !node->next)
 			node = node->parent;
 	}
+}
+
+PurpleChat *slack_find_blist_chat(PurpleAccount *account, const char *name) {
+	if (account->gc && account->gc->proto_data) {
+		SlackAccount *sa = account->gc->proto_data;
+		if (sa->channel_names) {
+			SlackChannel *chan = g_hash_table_lookup(sa->channel_names, name);
+			if (chan && chan->buddy)
+				return chan->buddy;
+		}
+	}
+	return purple_blist_find_chat(account, name);
 }

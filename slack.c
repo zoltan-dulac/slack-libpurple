@@ -211,7 +211,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	NULL,			/* remove_group */
 	NULL,			/* get_cb_real_name */
 	NULL,			/* set_chat_topic */
-	NULL,			/* find_blist_chat */
+	slack_find_blist_chat,	/* find_blist_chat */
 	NULL,			/* roomlist_get_list */
 	NULL,			/* roomlist_cancel */
 	NULL,			/* roomlist_expand_category */
