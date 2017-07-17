@@ -41,6 +41,7 @@ static void channels_info_cb(SlackAccount *sa, gpointer data, json_value *json, 
 
 static void channel_depart(SlackAccount *sa, SlackChannel *chan) {
 	if (chan->cid) {
+		serv_got_chat_left(sa->gc, chan->cid);
 		g_hash_table_remove(sa->channel_cids, GUINT_TO_POINTER(chan->cid));
 		chan->cid = 0;
 	}
@@ -234,6 +235,15 @@ void slack_join_chat(PurpleConnection *gc, GHashTable *info) {
 		channels_join_cb(sa, join, NULL, NULL);
 	else
 		slack_api_call(sa, channels_join_cb, join, "channels.join", "name", name, NULL);
+}
+
+void slack_chat_leave(PurpleConnection *gc, int cid) {
+	SlackAccount *sa = gc->proto_data;
+	SlackChannel *chan = g_hash_table_lookup(sa->channel_cids, GUINT_TO_POINTER(cid));
+	if (!chan)
+		return;
+	g_hash_table_remove(sa->channel_cids, GUINT_TO_POINTER(cid));
+	chan->cid = 0;
 }
 
 struct send_chat {

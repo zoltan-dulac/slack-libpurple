@@ -194,7 +194,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	NULL,			/* reject chat invite */
 	slack_get_chat_name,	/* get_chat_name */
 	NULL,			/* chat_invite */
-	NULL,			/* chat_leave */
+	slack_chat_leave,	/* chat_leave */
 	NULL,			/* chat_whisper */
 	slack_chat_send,	/* chat_send */
 	NULL,			/* keepalive */

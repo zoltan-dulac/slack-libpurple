@@ -34,6 +34,7 @@ void slack_groups_load(SlackAccount *sa);
 void slack_channel_update(SlackAccount *sa, json_value *json, SlackChannelType event);
 
 void slack_join_chat(PurpleConnection *gc, GHashTable *info);
+void slack_chat_leave(PurpleConnection *gc, int cid);
 int slack_chat_send(PurpleConnection *gc, int cid, const char *msg, PurpleMessageFlags flags);
 
 #endif // _PURPLE_SLACK_USER_H
