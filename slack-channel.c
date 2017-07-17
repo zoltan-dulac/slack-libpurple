@@ -26,7 +26,7 @@ static void slack_channel_class_init(SlackChannelClass *klass) {
 static void slack_channel_init(SlackChannel *self) {
 }
 
-static void channel_update(SlackAccount *sa, json_value *json, SlackChannelType type);
+static SlackChannel *channel_update(SlackAccount *sa, json_value *json, SlackChannelType type);
 
 static void channels_info_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
 	json_value *chan = json_get_prop_type(json, "channel", object);
@@ -51,14 +51,14 @@ static void channel_depart(SlackAccount *sa, SlackChannel *chan) {
 	}
 }
 
-static void channel_update(SlackAccount *sa, json_value *json, SlackChannelType type) {
+static SlackChannel *channel_update(SlackAccount *sa, json_value *json, SlackChannelType type) {
 	const char *sid = json_get_strptr(json);
 	if (sid)
 		json = NULL;
 	else
 		sid = json_get_prop_strptr(json, "id");
 	if (!sid)
-		return;
+		return NULL;
 	slack_object_id id;
 	slack_object_id_set(id, sid);
 
@@ -77,18 +77,18 @@ static void channel_update(SlackAccount *sa, json_value *json, SlackChannelType 
 
 	if (type == SLACK_CHANNEL_DELETED) {
 		if (!chan)
-			return;
+			return NULL;
 		channel_depart(sa, chan);
 		if (chan->name)
 			g_hash_table_remove(sa->channel_names, chan->name);
 		g_hash_table_remove(sa->channels, id);
-		return;
+		return NULL;
 	}
 
 	if (!chan && !json) {
 		purple_debug_info("slack", "Requesting info for unknown channel %s\n", sid);
 		slack_api_call(sa, channels_info_cb, NULL, "channels.info", "channel", sid, NULL);
-		return;
+		return NULL;
 	}
 
 	if (!chan) {
@@ -103,7 +103,7 @@ static void channel_update(SlackAccount *sa, json_value *json, SlackChannelType 
 	const char *name = json_get_prop_strptr(json, "name");
 
 	if (name && g_strcmp0(chan->name, name)) {
-		purple_debug_misc("slack", "channel %s: %s\n", sid, name);
+		purple_debug_misc("slack", "channel %s: %s %d\n", sid, name, type);
 		
 		if (chan->name)
 			g_hash_table_remove(sa->channel_names, chan->name);
@@ -130,6 +130,8 @@ static void channel_update(SlackAccount *sa, json_value *json, SlackChannelType 
 	else if (chan->type < SLACK_CHANNEL_MEMBER) {
 		channel_depart(sa, chan);
 	}
+
+	return chan;
 }
 
 void slack_channel_update(SlackAccount *sa, json_value *json, SlackChannelType event) {
@@ -175,6 +177,45 @@ void slack_groups_load(SlackAccount *sa) {
 	slack_api_call(sa, groups_list_cb, NULL, "groups.list", "exclude_archived", "true", NULL);
 }
 
+struct join_channel {
+	SlackChannel *chan;
+	char *name;
+};
+
+static void join_channel_free(struct join_channel *join) {
+	if (join->chan)
+		g_object_unref(join->chan);
+	g_free(join->name);
+	g_free(join);
+}
+
+static void channels_join_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
+	struct join_channel *join = data;
+
+	SlackChannel *chan = json
+		? channel_update(sa, json_get_prop(json, "channel"), SLACK_CHANNEL_MEMBER)
+		: join->chan;
+
+	if (!chan || error) {
+		purple_notify_error(sa->gc, "Invalid Channel", "Could not join channel", error ?: join->name);
+		/* hacky: reconstruct info */
+		GHashTable *info = slack_chat_info_defaults(sa->gc, join->name);
+		purple_serv_got_join_chat_failed(sa->gc, info);
+		join_channel_free(join);
+		return;
+	}
+
+	g_warn_if_fail(chan->type >= SLACK_CHANNEL_MEMBER);
+
+	if (!chan->cid) {
+		chan->cid = ++sa->cid;
+		g_hash_table_insert(sa->channel_cids, GUINT_TO_POINTER(chan->cid), chan);
+	}
+
+	serv_got_joined_chat(sa->gc, chan->cid, chan->name);
+	join_channel_free(join);
+}
+
 void slack_join_chat(PurpleConnection *gc, GHashTable *info) {
 	SlackAccount *sa = gc->proto_data;
 
@@ -182,15 +223,17 @@ void slack_join_chat(PurpleConnection *gc, GHashTable *info) {
 	g_return_if_fail(name);
 
 	SlackChannel *chan = g_hash_table_lookup(sa->channel_names, name);
-	if (!chan)
-		return purple_serv_got_join_chat_failed(gc, info);
+	if (chan)
+		g_object_ref(chan);
+	struct join_channel *join = g_new0(struct join_channel, 1);
+	if (chan)
+		join->chan = g_object_ref(chan);
+	join->name = g_strdup(name);
 
-	if (!chan->cid) {
-		chan->cid = ++sa->cid;
-		g_hash_table_insert(sa->channel_cids, GUINT_TO_POINTER(chan->cid), chan);
-	}
-
-	serv_got_joined_chat(gc, chan->cid, name);
+	if (chan && chan->type >= SLACK_CHANNEL_MEMBER)
+		channels_join_cb(sa, join, NULL, NULL);
+	else
+		slack_api_call(sa, channels_join_cb, join, "channels.join", "name", name, NULL);
 }
 
 struct send_chat {

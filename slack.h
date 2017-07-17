@@ -39,4 +39,6 @@ typedef struct _SlackAccount {
 	GHashTable *buddies; /* char *slack_id -> PurpleBListNode */
 } SlackAccount;
 
+GHashTable *slack_chat_info_defaults(PurpleConnection *gc, const char *name);
+
 #endif // _PURPLE_SLACK_H
