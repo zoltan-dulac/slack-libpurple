@@ -21,6 +21,9 @@ static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
 	if (!strcmp(type, "message")) {
 		slack_message(sa, json);
 	}
+	else if (!strcmp(type, "user_typing")) {
+		slack_user_typing(sa, json);
+	}
 	else if (!strcmp(type, "presence_change") ||
 	         !strcmp(type, "presence_change_batch")) {
 		slack_presence_change(sa, json);

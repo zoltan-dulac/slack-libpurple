@@ -15,6 +15,7 @@
 #include "slack-im.h"
 #include "slack-channel.h"
 #include "slack-blist.h"
+#include "slack-message.h"
 
 static const char *slack_list_icon(G_GNUC_UNUSED PurpleAccount * account, G_GNUC_UNUSED PurpleBuddy * buddy) {
 	return "slack";
@@ -175,7 +176,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	slack_close,		/* close */
 	slack_send_im,		/* send_im */
 	NULL,			/* set_info */
-	NULL,			/* send_typing */
+	slack_send_typing,	/* send_typing */
 	slack_get_info,		/* get_info */
 	NULL,			/* set_status */
 	NULL,			/* set_idle */
