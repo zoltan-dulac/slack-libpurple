@@ -196,10 +196,31 @@ static void channels_info_cb(SlackAccount *sa, gpointer data, json_value *json, 
 	if (!conv)
 		return;
 
-	json_value *topic = json_get_prop(json, "topic");
+	json_value *topic = json_get_prop_type(json, "topic", object);
 	if (topic) {
 		SlackUser *topic_user = (SlackUser*)slack_object_hash_table_lookup(sa->users, json_get_prop_strptr(topic, "creator"));
 		purple_conv_chat_set_topic(conv, topic_user ? topic_user->name : NULL, json_get_prop_strptr(json, "value"));
+	}
+
+	const char *creator = json_get_prop_strptr(json, "creator");
+
+	json_value *members = json_get_prop_type(json, "members", array);
+	if (members) {
+		GList *users = NULL, *flags = NULL;
+		for (unsigned i = members->u.array.length; i; i --) {
+			SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, json_get_strptr(members->u.array.values[i-1]));
+			if (!user)
+				continue;
+			users = g_list_prepend(users, user->name);
+			PurpleConvChatBuddyFlags flag = PURPLE_CBFLAGS_VOICE;
+			if (slack_object_id_is(user->object.id, creator))
+				flag |= PURPLE_CBFLAGS_FOUNDER;
+			flags = g_list_prepend(flags, GINT_TO_POINTER(flag));
+		}
+
+		purple_conv_chat_add_users(conv, users, NULL, flags, FALSE);
+		g_list_free(users);
+		g_list_free(flags);
 	}
 }
 

@@ -53,6 +53,8 @@ static inline gboolean slack_object_hash_table_replace(GHashTable *hash_table, S
 }
 
 static inline SlackObject *slack_object_hash_table_lookup(GHashTable *hash_table, const char *sid) {
+	if (!sid)
+		return NULL;
 	slack_object_id id;
 	slack_object_id_set(id, sid);
 	return g_hash_table_lookup(hash_table, id);

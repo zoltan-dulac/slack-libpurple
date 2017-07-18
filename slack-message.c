@@ -20,12 +20,12 @@ void slack_message(SlackAccount *sa, json_value *json) {
 	if (json_get_prop_boolean(json, "hidden", FALSE))
 		flags |= PURPLE_MESSAGE_INVISIBLE;
 
-	SlackUser *user = user_id ? (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id) : NULL;
+	SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
 	SlackChannel *chan;
 	if (user && slack_object_id_is(user->im, channel_id)) {
 		/* IM */
 		serv_got_im(sa->gc, user->name, text, flags, mt);
-	} else if ((chan = channel_id ? (SlackChannel*)slack_object_hash_table_lookup(sa->channels, channel_id) : NULL)) {
+	} else if ((chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, channel_id))) {
 		/* Channel */
 		if (!chan->cid)
 			return;
@@ -34,7 +34,7 @@ void slack_message(SlackAccount *sa, json_value *json) {
 		if (subtype && (conv = slack_channel_get_conversation(sa, chan))) {
 			if (!strcmp(subtype, "channel_topic") ||
 					!strcmp(subtype, "group_topic"))
-				purple_conv_chat_set_topic(conv, user ? user->name : NULL, json_get_prop_strptr(json, "topic"));
+				purple_conv_chat_set_topic(conv, user ? user->name : user_id, json_get_prop_strptr(json, "topic"));
 		}
 
 		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, text, mt);
@@ -47,12 +47,12 @@ void slack_user_typing(SlackAccount *sa, json_value *json) {
 	const char *user_id    = json_get_prop_strptr(json, "user");
 	const char *channel_id = json_get_prop_strptr(json, "channel");
 
-	SlackUser *user = user_id ? (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id) : NULL;
+	SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
 	SlackChannel *chan;
 	if (user && slack_object_id_is(user->im, channel_id)) {
 		/* IM */
 		serv_got_typing(sa->gc, user->name, 3, PURPLE_TYPING);
-	} else if ((chan = channel_id ? (SlackChannel*)slack_object_hash_table_lookup(sa->channels, channel_id) : NULL)) {
+	} else if ((chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, channel_id))) {
 		/* Channel */
 		/* libpurple does not support chat typing indicators */
 	} else {
@@ -75,4 +75,21 @@ unsigned int slack_send_typing(PurpleConnection *gc, const char *who, PurpleTypi
 	g_string_free(channel, TRUE);
 
 	return 3;
+}
+
+void slack_member_joined_channel(SlackAccount *sa, json_value *json, gboolean joined) {
+	SlackChannel *chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, json_get_prop_strptr(json, "channel"));
+	if (!chan)
+		return;
+
+	PurpleConvChat *conv = slack_channel_get_conversation(sa, chan);
+	if (!conv)
+		return;
+
+	const char *user_id = json_get_prop_strptr(json, "user");
+	SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
+	if (joined)
+		purple_conv_chat_add_user(conv, user ? user->name : user_id, NULL, PURPLE_CBFLAGS_VOICE, TRUE);
+	else
+		purple_conv_chat_remove_user(conv, user ? user->name : user_id, NULL);
 }
