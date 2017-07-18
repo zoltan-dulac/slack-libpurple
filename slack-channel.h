@@ -20,10 +20,6 @@ struct _SlackChannel {
 	SlackObject object;
 
 	char *name;
-	time_t created;
-	char *purpose;
-	char *topic;
-	unsigned member_count;
 
 	SlackChannelType type;
 	PurpleChat *buddy;
@@ -32,6 +28,8 @@ struct _SlackChannel {
 
 #define SLACK_TYPE_CHANNEL slack_channel_get_type()
 G_DECLARE_FINAL_TYPE(SlackChannel, slack_channel, SLACK, CHANNEL, SlackObject)
+
+PurpleConvChat *slack_channel_get_conversation(SlackAccount *sa, SlackChannel *chan);
 
 void slack_channels_load(SlackAccount *sa);
 void slack_groups_load(SlackAccount *sa);

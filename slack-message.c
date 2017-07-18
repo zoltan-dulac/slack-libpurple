@@ -29,6 +29,14 @@ void slack_message(SlackAccount *sa, json_value *json) {
 		/* Channel */
 		if (!chan->cid)
 			return;
+
+		PurpleConvChat *conv;
+		if (subtype && (conv = slack_channel_get_conversation(sa, chan))) {
+			if (!strcmp(subtype, "channel_topic") ||
+					!strcmp(subtype, "group_topic"))
+				purple_conv_chat_set_topic(conv, user ? user->name : NULL, json_get_prop_strptr(json, "topic"));
+		}
+
 		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, text, mt);
 	} else {
 		purple_debug_warning("slack", "Unhandled message: %s@%s: %s\n", user_id, channel_id, text);

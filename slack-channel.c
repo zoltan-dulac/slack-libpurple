@@ -6,6 +6,7 @@
 #include "slack-api.h"
 #include "slack-blist.h"
 #include "slack-rtm.h"
+#include "slack-user.h"
 #include "slack-channel.h"
 
 G_DEFINE_TYPE(SlackChannel, slack_channel, SLACK_TYPE_OBJECT);
@@ -14,8 +15,6 @@ static void slack_channel_finalize(GObject *gobj) {
 	SlackChannel *chan = SLACK_CHANNEL(gobj);
 
 	g_free(chan->name);
-	g_free(chan->purpose);
-	g_free(chan->topic);
 
 	G_OBJECT_CLASS(slack_channel_parent_class)->finalize(gobj);
 }
@@ -28,17 +27,11 @@ static void slack_channel_class_init(SlackChannelClass *klass) {
 static void slack_channel_init(SlackChannel *self) {
 }
 
-static SlackChannel *channel_update(SlackAccount *sa, json_value *json, SlackChannelType type);
-
-static void channels_info_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
-	json_value *chan = json_get_prop_type(json, "channel", object);
-
-	if (!chan || error) {
-		purple_debug_error("slack", "Error loading channel info: %s\n", error ?: "missing");
-		return;
-	}
-
-	channel_update(sa, chan, SLACK_CHANNEL_PUBLIC);
+PurpleConvChat *slack_channel_get_conversation(SlackAccount *sa, SlackChannel *chan) {
+	g_return_val_if_fail(chan, NULL);
+	if (!chan->cid)
+		return NULL;
+	return PURPLE_CONV_CHAT(purple_find_chat(sa->gc, chan->cid));
 }
 
 static void channel_depart(SlackAccount *sa, SlackChannel *chan) {
@@ -88,11 +81,7 @@ static SlackChannel *channel_update(SlackAccount *sa, json_value *json, SlackCha
 		return NULL;
 	}
 
-	if (!chan && !json) {
-		purple_debug_info("slack", "Requesting info for unknown channel %s\n", sid);
-		slack_api_call(sa, channels_info_cb, NULL, "channels.info", "channel", sid, NULL);
-		return NULL;
-	}
+	g_return_val_if_fail(chan || json, NULL);
 
 	if (!chan) {
 		chan = g_object_new(SLACK_TYPE_CHANNEL, NULL);
@@ -116,23 +105,6 @@ static SlackChannel *channel_update(SlackAccount *sa, json_value *json, SlackCha
 		if (chan->buddy)
 			g_hash_table_insert(chan->buddy->components, g_strdup("name"), g_strdup(chan->name));
 	}
-
-	time_t created = slack_parse_time(json_get_prop(json, "created"));
-	if (created)
-		chan->created = created;
-	const char *purpose = json_get_prop_strptr(json_get_prop(json, "purpose"), "value");
-	if (purpose) {
-		g_free(chan->purpose);
-		chan->purpose = g_strdup(purpose);
-	}
-	const char *topic = json_get_prop_strptr(json_get_prop(json, "topic"), "value");
-	if (topic) {
-		g_free(chan->topic);
-		chan->topic = g_strdup(topic);
-	}
-	json_value *members = json_get_prop_type(json, "members", array);
-	if (members)
-		chan->member_count = members->u.array.length;
 
 	if (!chan->buddy && chan->type >= SLACK_CHANNEL_MEMBER) {
 		chan->buddy = g_hash_table_lookup(sa->buddies, sid);
@@ -209,6 +181,28 @@ static void join_channel_free(struct join_channel *join) {
 	g_free(join);
 }
 
+static void channels_info_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
+	SlackChannelType type = GPOINTER_TO_INT(data);
+	json = json_get_prop_type(json, type >= SLACK_CHANNEL_GROUP ? "group" : "channel", object);
+
+	if (!json || error) {
+		purple_debug_error("slack", "Error loading channel info: %s\n", error ?: "missing");
+		return;
+	}
+
+	SlackChannel *chan = channel_update(sa, json, SLACK_CHANNEL_PUBLIC);
+
+	PurpleConvChat *conv = slack_channel_get_conversation(sa, chan);
+	if (!conv)
+		return;
+
+	json_value *topic = json_get_prop(json, "topic");
+	if (topic) {
+		SlackUser *topic_user = (SlackUser*)slack_object_hash_table_lookup(sa->users, json_get_prop_strptr(topic, "creator"));
+		purple_conv_chat_set_topic(conv, topic_user ? topic_user->name : NULL, json_get_prop_strptr(json, "value"));
+	}
+}
+
 static void channels_join_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
 	struct join_channel *join = data;
 
@@ -233,6 +227,8 @@ static void channels_join_cb(SlackAccount *sa, gpointer data, json_value *json, 
 	}
 
 	serv_got_joined_chat(sa->gc, chan->cid, chan->name);
+
+	slack_api_call(sa, channels_info_cb, GINT_TO_POINTER(chan->type), chan->type >= SLACK_CHANNEL_GROUP ? "groups.info" : "channels.info", "channel", chan->object.id, NULL);
 	join_channel_free(join);
 }
 

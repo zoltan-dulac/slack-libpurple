@@ -1,6 +1,9 @@
 #include <string.h>
 
+#include "slack-json.h"
 #include "slack-channel.h"
+#include "slack-user.h"
+#include "slack-api.h"
 #include "slack-blist.h"
 
 void slack_blist_uncache(SlackAccount *sa, PurpleBlistNode *b) {
@@ -77,50 +80,103 @@ PurpleChat *slack_find_blist_chat(PurpleAccount *account, const char *name) {
 	return purple_blist_find_chat(account, name);
 }
 
+struct roomlist_expand {
+	PurpleRoomlist *list;
+	PurpleRoomlistRoom *parent;
+	SlackChannelType type;
+	gboolean archived;
+};
+
+void free_roomlist_expand(struct roomlist_expand *expand) {
+	purple_roomlist_unref(expand->list);
+	g_free(expand);
+}
+
+static void roomlist_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
+	struct roomlist_expand *expand = data;
+
+	json = json_get_prop_type(json, expand->type >= SLACK_CHANNEL_GROUP ? "groups" : "channels", array);
+	if (!json || error) {
+		purple_notify_error(sa->gc, "Channel list error", "Could not read channel list", error);
+		free_roomlist_expand(expand);
+		return;
+	}
+
+	for (unsigned i = 0; i < json->u.array.length; i++) {
+		json_value *chan = json->u.array.values[i];
+
+		gboolean archived = json_get_prop_boolean(chan, "is_archived", FALSE) || json_get_prop_boolean(chan, "is_deleted", FALSE);
+		if (archived != expand->archived)
+			continue;
+
+		PurpleRoomlistRoom *room = purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_ROOM, json_get_prop_strptr(chan, "name"), expand->parent);
+		purple_roomlist_room_add_field(expand->list, room, json_get_prop_strptr(chan, "id"));
+		purple_roomlist_room_add_field(expand->list, room, json_get_prop_strptr(json_get_prop(chan, "topic"), "value"));
+		purple_roomlist_room_add_field(expand->list, room, json_get_prop_strptr(json_get_prop(chan, "purpose"), "value"));
+		purple_roomlist_room_add_field(expand->list, room, GUINT_TO_POINTER(json_get_val(json_get_prop(chan, "num_members"), integer, 0)));
+		time_t t = slack_parse_time(json_get_prop(chan, "created"));
+		purple_roomlist_room_add_field(expand->list, room, purple_date_format_long(localtime(&t)));
+		SlackUser *creator = (SlackUser*)slack_object_hash_table_lookup(sa->users, json_get_prop_strptr(chan, "creator"));
+		purple_roomlist_room_add_field(expand->list, room, creator ? creator->name : NULL);
+		purple_roomlist_room_add(expand->list, room);
+	}
+
+	free_roomlist_expand(expand);
+}
+
+void slack_roomlist_expand_category(PurpleRoomlist *list, PurpleRoomlistRoom *parent) {
+	if (!list->account || !list->account->gc || !list->account->gc->proto_data || strcmp(list->account->protocol_id, SLACK_PLUGIN_ID))
+		return;
+	SlackAccount *sa = list->account->gc->proto_data;
+
+	struct roomlist_expand *expand = g_new0(struct roomlist_expand, 1);
+	expand->list = list;
+	expand->parent = parent;
+	const char *cat = purple_roomlist_room_get_name(parent);
+	if (!g_strcmp0(cat, "Archived") && parent->parent) {
+		expand->archived = TRUE;
+		cat = purple_roomlist_room_get_name(parent->parent);
+	}
+	const char *op;
+	if (!g_strcmp0(cat, "Public Channels")) {
+		expand->type = SLACK_CHANNEL_PUBLIC;
+		op = "channels.list";
+	}
+	else if (!g_strcmp0(cat, "Private Channels")) {
+		expand->type = SLACK_CHANNEL_GROUP;
+		op = "groups.list";
+	}
+	else if (!g_strcmp0(cat, "Multiparty Direct Messages")) {
+		expand->type = SLACK_CHANNEL_MPIM;
+		op = "mpim.list";
+	}
+	else
+		return;
+	purple_roomlist_ref(list);
+	slack_api_call(sa, roomlist_cb, expand, op, "exclude_archived", expand->archived ? "false" : "true", "exclude_members", "true", NULL);
+}
+
 PurpleRoomlist *slack_roomlist_get_list(PurpleConnection *gc) {
 	SlackAccount *sa = gc->proto_data;
 
 	PurpleRoomlist *list = purple_roomlist_new(sa->account);
 
 	GList *fields = NULL;
+	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "ID", "id", TRUE));
 	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Topic", "topic", FALSE));
 	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Purpose", "purpose", FALSE));
-	// fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_INT, "Members", "members", FALSE));
+	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_INT, "Members", "members", FALSE));
 	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Created", "created", FALSE));
+	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Creator", "creator", FALSE));
 	purple_roomlist_set_fields(list, fields);
 
 	PurpleRoomlistRoom *public = purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_CATEGORY, "Public Channels", NULL);
 	purple_roomlist_room_add(list, public);
 	PurpleRoomlistRoom *private = purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_CATEGORY, "Private Channels", NULL);
 	purple_roomlist_room_add(list, private);
-	/* TODO: archived? */
-
-	GHashTableIter iter;
-	char *key;
-	SlackChannel *chan;
-
-	g_hash_table_iter_init(&iter, sa->channels);
-	while (g_hash_table_iter_next(&iter, (gpointer*)&key, (gpointer*)&chan)) {
-		PurpleRoomlistRoom *parent;
-		switch (chan->type) {
-			case SLACK_CHANNEL_PUBLIC:
-			case SLACK_CHANNEL_MEMBER:
-				parent = public;
-				break;
-			case SLACK_CHANNEL_GROUP:
-			case SLACK_CHANNEL_MPIM:
-				parent = private;
-				break;
-			default:
-				continue;
-		}
-		PurpleRoomlistRoom *room = purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_ROOM, chan->name, parent);
-		purple_roomlist_room_add_field(list, room, chan->topic);
-		purple_roomlist_room_add_field(list, room, chan->purpose);
-		// purple_roomlist_room_add_field(list, room, GUINT_TO_POINTER(chan->member_count));
-		purple_roomlist_room_add_field(list, room, purple_date_format_long(localtime(&chan->created)));
-		purple_roomlist_room_add(list, room);
-	}
+	purple_roomlist_room_add(list, purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_CATEGORY, "Multiparty Direct Messages", NULL));
+	purple_roomlist_room_add(list, purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_CATEGORY, "Archived", public));
+	purple_roomlist_room_add(list, purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_CATEGORY, "Archived", private));
 
 	purple_roomlist_unref(list);
 	return list;

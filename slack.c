@@ -203,7 +203,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	slack_find_blist_chat,	/* find_blist_chat */
 	slack_roomlist_get_list,/* roomlist_get_list */
 	NULL,			/* roomlist_cancel */
-	NULL,			/* roomlist_expand_category */
+	slack_roomlist_expand_category,	/* roomlist_expand_category */
 	NULL,			/* can_receive_file */
 	NULL,			/* send_file */
 	NULL,			/* new_xfer */

@@ -184,7 +184,7 @@ void slack_rtm_send(SlackAccount *sa, SlackRTMCallback *callback, gpointer user_
 	}
 	va_end(qargs);
 	g_string_append_c(json, '}');
-	g_return_if_fail(json->len > 0 && json->len <= 16384);
+	g_return_if_fail(json->len <= 16384);
 
 	purple_debug_misc("slack", "RTM: %.*s\n", (int)json->len, json->str);
 

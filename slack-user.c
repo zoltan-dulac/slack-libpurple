@@ -130,7 +130,7 @@ static void users_info_cb(SlackAccount *sa, gpointer data, json_value *json, con
 
 	if (error || !json) {
 		/* need to close userinfo dialog somehow? */
-		purple_notify_error(sa->gc, NULL, "No such user", error ?: who);
+		purple_notify_error(sa->gc, "User info error", "No such user", error ?: who);
 		g_free(who);
 		return;
 	}
