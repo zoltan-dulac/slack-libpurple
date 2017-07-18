@@ -10,11 +10,9 @@ void slack_message(SlackAccount *sa, json_value *json) {
 	const char *user_id    = json_get_prop_strptr(json, "user");
 	const char *channel_id = json_get_prop_strptr(json, "channel");
 	const char *text       = json_get_prop_strptr(json, "text");
-	const char *ts         = json_get_prop_strptr(json, "ts");
 	const char *subtype    = json_get_prop_strptr(json, "subtype");
 
-	/* ts is EPOCH.0000ID, atol is sufficient */
-	time_t mt = ts ? atol(ts) : 0;
+	time_t mt = slack_parse_time(json_get_prop(json, "ts"));
 
 	PurpleMessageFlags flags = PURPLE_MESSAGE_RECV;
 	if (subtype)

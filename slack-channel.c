@@ -14,6 +14,8 @@ static void slack_channel_finalize(GObject *gobj) {
 	SlackChannel *chan = SLACK_CHANNEL(gobj);
 
 	g_free(chan->name);
+	g_free(chan->purpose);
+	g_free(chan->topic);
 
 	G_OBJECT_CLASS(slack_channel_parent_class)->finalize(gobj);
 }
@@ -114,6 +116,23 @@ static SlackChannel *channel_update(SlackAccount *sa, json_value *json, SlackCha
 		if (chan->buddy)
 			g_hash_table_insert(chan->buddy->components, g_strdup("name"), g_strdup(chan->name));
 	}
+
+	time_t created = slack_parse_time(json_get_prop(json, "created"));
+	if (created)
+		chan->created = created;
+	const char *purpose = json_get_prop_strptr(json_get_prop(json, "purpose"), "value");
+	if (purpose) {
+		g_free(chan->purpose);
+		chan->purpose = g_strdup(purpose);
+	}
+	const char *topic = json_get_prop_strptr(json_get_prop(json, "topic"), "value");
+	if (topic) {
+		g_free(chan->topic);
+		chan->topic = g_strdup(topic);
+	}
+	json_value *members = json_get_prop_type(json, "members", array);
+	if (members)
+		chan->member_count = members->u.array.length;
 
 	if (!chan->buddy && chan->type >= SLACK_CHANNEL_MEMBER) {
 		chan->buddy = g_hash_table_lookup(sa->buddies, sid);
@@ -268,8 +287,7 @@ static void send_chat_cb(SlackAccount *sa, gpointer data, json_value *json, cons
 	}
 
 	const char *text       = json_get_prop_strptr(json, "text");
-	const char *ts         = json_get_prop_strptr(json, "ts");
-	time_t mt = ts ? atol(ts) : 0;
+	time_t mt = slack_parse_time(json_get_prop(json, "ts"));
 	serv_got_chat_in(sa->gc, send->cid, purple_connection_get_display_name(sa->gc), send->flags, text, mt);
 	send_chat_free(send);
 }

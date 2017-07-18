@@ -11,6 +11,7 @@ void slack_blist_cache(SlackAccount *sa, PurpleBlistNode *b, const char *id);
 void slack_blist_init(SlackAccount *sa);
 
 PurpleChat *slack_find_blist_chat(PurpleAccount *account, const char *name);
+PurpleRoomlist *slack_roomlist_get_list(PurpleConnection *gc);
 
 void slack_buddy_free(PurpleBuddy *b);
 

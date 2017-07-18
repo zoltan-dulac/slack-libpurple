@@ -76,3 +76,51 @@ PurpleChat *slack_find_blist_chat(PurpleAccount *account, const char *name) {
 	}
 	return purple_blist_find_chat(account, name);
 }
+
+PurpleRoomlist *slack_roomlist_get_list(PurpleConnection *gc) {
+	SlackAccount *sa = gc->proto_data;
+
+	PurpleRoomlist *list = purple_roomlist_new(sa->account);
+
+	GList *fields = NULL;
+	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Topic", "topic", FALSE));
+	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Purpose", "purpose", FALSE));
+	// fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_INT, "Members", "members", FALSE));
+	// fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Created", "created", FALSE));
+	purple_roomlist_set_fields(list, fields);
+
+	PurpleRoomlistRoom *public = purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_CATEGORY, "Public Channels", NULL);
+	purple_roomlist_room_add(list, public);
+	PurpleRoomlistRoom *private = purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_CATEGORY, "Private Channels", NULL);
+	purple_roomlist_room_add(list, private);
+	/* TODO: archived? */
+
+	GHashTableIter iter;
+	char *key;
+	SlackChannel *chan;
+
+	g_hash_table_iter_init(&iter, sa->channels);
+	while (g_hash_table_iter_next(&iter, (gpointer*)&key, (gpointer*)&chan)) {
+		PurpleRoomlistRoom *parent;
+		switch (chan->type) {
+			case SLACK_CHANNEL_PUBLIC:
+			case SLACK_CHANNEL_MEMBER:
+				parent = public;
+				break;
+			case SLACK_CHANNEL_GROUP:
+			case SLACK_CHANNEL_MPIM:
+				parent = private;
+				break;
+			default:
+				continue;
+		}
+		PurpleRoomlistRoom *room = purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_ROOM, chan->name, parent);
+		purple_roomlist_room_add_field(list, room, chan->topic);
+		purple_roomlist_room_add_field(list, room, chan->purpose);
+		// purple_roomlist_room_add_field(list, room, GUINT_TO_POINTER(chan->member_count));
+		purple_roomlist_room_add(list, room);
+	}
+
+	purple_roomlist_unref(list);
+	return list;
+}

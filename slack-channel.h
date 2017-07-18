@@ -20,6 +20,10 @@ struct _SlackChannel {
 	SlackObject object;
 
 	char *name;
+	time_t created;
+	char *purpose;
+	char *topic;
+	unsigned member_count;
 
 	SlackChannelType type;
 	PurpleChat *buddy;

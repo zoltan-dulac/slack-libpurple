@@ -29,4 +29,6 @@ json_value *json_get_prop(json_value *val, const char *prop) __attribute__((pure
 /* Add an escaped, quoted json string to a GString */
 GString *append_json_string(GString *str, const char *s);
 
+time_t slack_parse_time(json_value *val);
+
 #endif
