@@ -39,17 +39,6 @@ static GList *slack_status_types(G_GNUC_UNUSED PurpleAccount *acct) {
 	return types;
 }
 
-static void slack_get_info(PurpleConnection *gc, const char *who) {
-	SlackAccount *sa = gc->proto_data;
-	SlackUser *user = slack_user_find(sa, who);
-	PurpleNotifyUserInfo *info = purple_notify_user_info_new();
-	if (user) {
-		purple_notify_user_info_add_pair_plaintext(info, "name", user->name);
-	}
-	purple_notify_userinfo(gc, who, info, NULL, NULL);
-	purple_notify_user_info_destroy(info);
-}
-
 static GList *slack_chat_info(PurpleConnection *gc) {
 	GList *l = NULL;
 

@@ -86,7 +86,7 @@ PurpleRoomlist *slack_roomlist_get_list(PurpleConnection *gc) {
 	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Topic", "topic", FALSE));
 	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Purpose", "purpose", FALSE));
 	// fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_INT, "Members", "members", FALSE));
-	// fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Created", "created", FALSE));
+	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Created", "created", FALSE));
 	purple_roomlist_set_fields(list, fields);
 
 	PurpleRoomlistRoom *public = purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_CATEGORY, "Public Channels", NULL);
@@ -118,6 +118,7 @@ PurpleRoomlist *slack_roomlist_get_list(PurpleConnection *gc) {
 		purple_roomlist_room_add_field(list, room, chan->topic);
 		purple_roomlist_room_add_field(list, room, chan->purpose);
 		// purple_roomlist_room_add_field(list, room, GUINT_TO_POINTER(chan->member_count));
+		purple_roomlist_room_add_field(list, room, purple_date_format_long(localtime(&chan->created)));
 		purple_roomlist_room_add(list, room);
 	}
 

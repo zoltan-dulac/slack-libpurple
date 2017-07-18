@@ -97,14 +97,6 @@ void slack_users_load(SlackAccount *sa) {
 	slack_api_call(sa, users_list_cb, NULL, "users.list", "presence", "false", NULL);
 }
 
-static gboolean user_name_equal(char *id, SlackUser *user, const char *name) {
-	return !g_strcmp0(user->name, name);
-}
-
-SlackUser *slack_user_find(SlackAccount *sa, const char *name) {
-	return g_hash_table_find(sa->users, (GHRFunc)user_name_equal, (gpointer)name);
-}
-
 static void presence_set(SlackAccount *sa, json_value *json, const char *presence) {
 	if (json->type != json_string)
 		return;
@@ -129,5 +121,77 @@ void slack_presence_change(SlackAccount *sa, json_value *json) {
 			presence_set(sa, users->u.array.values[i], presence);
 	else
 		presence_set(sa, users, presence);
+}
+
+static void users_info_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
+	char *who = data;
+
+	json = json_get_prop_type(json, "user", object);
+
+	if (error || !json) {
+		/* need to close userinfo dialog somehow? */
+		purple_notify_error(sa->gc, NULL, "No such user", error ?: who);
+		g_free(who);
+		return;
+	}
+
+	PurpleNotifyUserInfo *info = purple_notify_user_info_new();
+
+	const char *s;
+	time_t t;
+	if ((s = json_get_prop_strptr(json, "id")))
+		purple_notify_user_info_add_pair_plaintext(info, "id", s);
+	if ((s = json_get_prop_strptr(json, "name")))
+		purple_notify_user_info_add_pair_plaintext(info, "name", s);
+	if (json_get_prop_boolean(json, "deleted", FALSE))
+		purple_notify_user_info_add_pair_plaintext(info, "status", "deleted");
+	if (json_get_prop_boolean(json, "is_primary_owner", FALSE))
+		purple_notify_user_info_add_pair_plaintext(info, "role", "primary owner");
+	else if (json_get_prop_boolean(json, "is_owner", FALSE))
+		purple_notify_user_info_add_pair_plaintext(info, "role", "owner");
+	else if (json_get_prop_boolean(json, "is_admin", FALSE))
+		purple_notify_user_info_add_pair_plaintext(info, "role", "admin");
+	else if (json_get_prop_boolean(json, "is_ultra_restricted", FALSE))
+		purple_notify_user_info_add_pair_plaintext(info, "role", "ultra restricted");
+	else if (json_get_prop_boolean(json, "is_restricted", FALSE))
+		purple_notify_user_info_add_pair_plaintext(info, "role", "restricted");
+	if (json_get_prop_boolean(json, "has_2fa", FALSE)) {
+		s = json_get_prop_strptr(json, "two_factor_type");
+		purple_notify_user_info_add_pair_plaintext(info, "2fa", s ?: "true");
+	}
+	if ((t = slack_parse_time(json_get_prop(json, "updated"))))
+		purple_notify_user_info_add_pair_plaintext(info, "updated", purple_date_format_long(localtime(&t)));
+
+	json_value *prof = json_get_prop_type(json, "profile", object);
+	if (prof) {
+		purple_notify_user_info_add_section_header(info, "profile");
+		if ((s = json_get_prop_strptr(prof, "status_text")))
+			purple_notify_user_info_add_pair_plaintext(info, "status", s);
+		if ((s = json_get_prop_strptr(prof, "first_name")))
+			purple_notify_user_info_add_pair_plaintext(info, "first name", s);
+		if ((s = json_get_prop_strptr(prof, "last_name")))
+			purple_notify_user_info_add_pair_plaintext(info, "last name", s);
+		if ((s = json_get_prop_strptr(prof, "real_name")))
+			purple_notify_user_info_add_pair_plaintext(info, "real name", s);
+		if ((s = json_get_prop_strptr(prof, "email")))
+			purple_notify_user_info_add_pair_plaintext(info, "email", s);
+		if ((s = json_get_prop_strptr(prof, "skype")))
+			purple_notify_user_info_add_pair_plaintext(info, "skype", s);
+		if ((s = json_get_prop_strptr(prof, "phone")))
+			purple_notify_user_info_add_pair_plaintext(info, "phone", s);
+	}
+
+	purple_notify_userinfo(sa->gc, who, info, NULL, NULL);
+	purple_notify_user_info_destroy(info);
+	g_free(who);
+}
+
+void slack_get_info(PurpleConnection *gc, const char *who) {
+	SlackAccount *sa = gc->proto_data;
+	SlackUser *user = g_hash_table_lookup(sa->user_names, who);
+	if (!user)
+		users_info_cb(sa, g_strdup(who), NULL, NULL);
+	else
+		slack_api_call(sa, users_info_cb, g_strdup(who), "users.info", "user", user->object.id, NULL);
 }
 
