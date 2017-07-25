@@ -71,7 +71,7 @@ static void slack_login(PurpleAccount *account) {
 	PurpleConnection *gc = purple_account_get_connection(account);
 
 	const gchar *token = purple_account_get_string(account, "api_token", NULL);
-	if (!token)
+	if (!token || !*token)
 	{
 		purple_connection_error_reason(gc,
 			PURPLE_CONNECTION_ERROR_INVALID_SETTINGS, "API token required");

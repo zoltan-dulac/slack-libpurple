@@ -38,6 +38,7 @@ static void api_cb(G_GNUC_UNUSED PurpleUtilFetchUrlData *fetch, gpointer data, c
 	if (!json_get_prop_boolean(json, "ok", FALSE)) {
 		const char *err = json_get_prop_strptr(json, "error");
 		api_error(call, err ?: "Unknown error");
+		call = NULL;
 	} else {
 		call->callback(call->sa, call->data, json, NULL);
 	}
@@ -48,7 +49,6 @@ static void api_cb(G_GNUC_UNUSED PurpleUtilFetchUrlData *fetch, gpointer data, c
 
 void slack_api_call(SlackAccount *sa, SlackAPICallback callback, gpointer user_data, const char *method, ...)
 {
-
 	SlackAPICall *call = g_new0(SlackAPICall, 1);
 	call->sa = sa;
 	call->callback = callback;
