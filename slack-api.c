@@ -1,6 +1,15 @@
 #include "slack-api.h"
 #include "slack-json.h"
 
+PurpleConnectionError slack_api_connection_error(const gchar *error) {
+	if (!g_strcmp0(error, "not_authed"))
+		return PURPLE_CONNECTION_ERROR_INVALID_USERNAME;
+	if (!g_strcmp0(error, "invalid_auth") ||
+			!g_strcmp0(error, "account_inactive"))
+		return PURPLE_CONNECTION_ERROR_AUTHENTICATION_FAILED;
+	return PURPLE_CONNECTION_ERROR_NETWORK_ERROR;
+}
+
 struct _SlackAPICall {
 	SlackAccount *sa;
 	PurpleUtilFetchUrlData *fetch;

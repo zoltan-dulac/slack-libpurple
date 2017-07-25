@@ -139,7 +139,7 @@ static void rtm_connect_cb(SlackAccount *sa, gpointer data, json_value *json, co
 
 	if (!url || !self_id) {
 		purple_connection_error_reason(sa->gc,
-				PURPLE_CONNECTION_ERROR_NETWORK_ERROR, error ?: "Missing RTM parameters");
+				slack_api_connection_error(error), error ?: "Missing RTM parameters");
 		return;
 	}
 

@@ -6,25 +6,106 @@
 #include "slack-channel.h"
 #include "slack-message.h"
 
+static gchar *slack_message_to_html(SlackAccount *sa, gchar *s, PurpleMessageFlags *flags) {
+	g_return_val_if_fail(s, NULL);
+
+	size_t l = strlen(s);
+	char *e = &s[l];
+	GString *html = g_string_sized_new(l);
+
+	/* TODO: newlines */
+	while (s) {
+		char *p = strchr(s, '<');
+		if (!p) {
+			g_string_append(html, s);
+			break;
+		} else
+			g_string_append_len(html, s, p-s);
+
+		p++;
+		char *r = strchr(p, '>');
+		if (!r) {
+			/* should really be error */
+			r = e;
+			s = NULL;
+		} else {
+			*r = 0;
+			s = r+1;
+		}
+		char *b = memchr(p, '|', r-p);
+		if (b) {
+			*b = 0;
+			b++;
+		}
+		switch (*p) {
+			case '#':
+				p++;
+				g_string_append_c(html, '#');
+				if (!b) {
+					SlackChannel *chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, p);
+					if (chan)
+						b = chan->name;
+				}
+				g_string_append(html, b ?: p);
+				break;
+			case '@':
+				p++;
+				g_string_append_c(html, '@');
+				if (!strcmp(p, sa->self))
+					*flags |= PURPLE_MESSAGE_NICK;
+				if (!b) {
+					SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, p);
+					if (user)
+						b = user->name;
+				}
+				g_string_append(html, b ?: p);
+				break;
+			case '!':
+				p++;
+				if (!strcmp(p, "channel") || !strcmp(p, "group") || !strcmp(p, "here") || !strcmp(p, "everyone")) {
+					*flags |= PURPLE_MESSAGE_NOTIFY;
+					g_string_append_c(html, '@');
+					g_string_append(html, b ?: p);
+				} else {
+					g_string_append(html, "&lt;");
+					g_string_append(html, b ?: p);
+					g_string_append(html, "&gt;");
+				}
+				break;
+			default:
+				/* URL */
+				g_string_append(html, "<a href=\"");
+				g_string_append(html, p); /* XXX embedded quotes? */
+				g_string_append(html, "\">");
+				g_string_append(html, b ?: p);
+				g_string_append(html, "</a>");
+		}
+	}
+
+	return g_string_free(html, FALSE);
+}
+
 void slack_message(SlackAccount *sa, json_value *json) {
 	const char *user_id    = json_get_prop_strptr(json, "user");
 	const char *channel_id = json_get_prop_strptr(json, "channel");
-	const char *text       = json_get_prop_strptr(json, "text");
 	const char *subtype    = json_get_prop_strptr(json, "subtype");
 
 	time_t mt = slack_parse_time(json_get_prop(json, "ts"));
 
 	PurpleMessageFlags flags = PURPLE_MESSAGE_RECV;
+	/* TODO: "me_message" */
 	if (subtype)
 		flags |= PURPLE_MESSAGE_SYSTEM; /* PURPLE_MESSAGE_NOTIFY? */
 	if (json_get_prop_boolean(json, "hidden", FALSE))
 		flags |= PURPLE_MESSAGE_INVISIBLE;
 
+	char *html = slack_message_to_html(sa, json_get_prop_strptr(json, "text"), &flags);
+
 	SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
 	SlackChannel *chan;
 	if (user && slack_object_id_is(user->im, channel_id)) {
 		/* IM */
-		serv_got_im(sa->gc, user->name, text, flags, mt);
+		serv_got_im(sa->gc, user->name, html, flags, mt);
 	} else if ((chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, channel_id))) {
 		/* Channel */
 		if (!chan->cid)
@@ -37,9 +118,9 @@ void slack_message(SlackAccount *sa, json_value *json) {
 				purple_conv_chat_set_topic(conv, user ? user->name : user_id, json_get_prop_strptr(json, "topic"));
 		}
 
-		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, text, mt);
+		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, html, mt);
 	} else {
-		purple_debug_warning("slack", "Unhandled message: %s@%s: %s\n", user_id, channel_id, text);
+		purple_debug_warning("slack", "Unhandled message: %s@%s: %s\n", user_id, channel_id, html);
 	}
 }
 
