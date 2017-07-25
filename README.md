@@ -21,7 +21,7 @@ Here's how slack concepts are mapped to purple:
 - [x] Basic IM (direct message) functionality
 - [x] Basic channel (chat) functionality
 - [ ] Apply buddy changes to open/close channels
-- [ ] Proper message formatting (for @mentions and such)
+- [x] Proper message formatting (for @mentions and such, incoming only)
 - [ ] Set presence/status
 - [ ] Retrieve message history to populate new conversations?
 - [ ] Optimize HTTP connections (libpurple 3?)

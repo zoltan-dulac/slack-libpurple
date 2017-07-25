@@ -9,77 +9,79 @@
 static gchar *slack_message_to_html(SlackAccount *sa, gchar *s, PurpleMessageFlags *flags) {
 	g_return_val_if_fail(s, NULL);
 
+	*flags |= PURPLE_MESSAGE_NO_LINKIFY;
+
 	size_t l = strlen(s);
-	char *e = &s[l];
+	char *end = &s[l];
 	GString *html = g_string_sized_new(l);
 
-	/* TODO: newlines */
-	while (s) {
-		char *p = strchr(s, '<');
-		if (!p) {
-			g_string_append(html, s);
-			break;
-		} else
-			g_string_append_len(html, s, p-s);
-
-		p++;
-		char *r = strchr(p, '>');
-		if (!r) {
-			/* should really be error */
-			r = e;
-			s = NULL;
-		} else {
-			*r = 0;
-			s = r+1;
+	while (s < end) {
+		char c = *s++;
+		if (c == '\n') {
+			g_string_append(html, "<BR>");
+			continue;
 		}
-		char *b = memchr(p, '|', r-p);
+		if (c != '<') {
+			g_string_append_c(html, c);
+			continue;
+		}
+
+		/* found a <tag> */
+		char *r = strchr(s, '>');
+		if (!r)
+			/* should really be error */
+			r = end;
+		else
+			*r = 0;
+		char *b = memchr(s, '|', r-s);
 		if (b) {
 			*b = 0;
 			b++;
 		}
-		switch (*p) {
+		switch (*s) {
 			case '#':
-				p++;
+				s++;
 				g_string_append_c(html, '#');
 				if (!b) {
-					SlackChannel *chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, p);
+					SlackChannel *chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, s);
 					if (chan)
 						b = chan->name;
 				}
-				g_string_append(html, b ?: p);
+				g_string_append(html, b ?: s);
 				break;
 			case '@':
-				p++;
+				s++;
 				g_string_append_c(html, '@');
-				if (!strcmp(p, sa->self))
+				if (!strcmp(s, sa->self))
 					*flags |= PURPLE_MESSAGE_NICK;
 				if (!b) {
-					SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, p);
+					SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, s);
 					if (user)
 						b = user->name;
 				}
-				g_string_append(html, b ?: p);
+				g_string_append(html, b ?: s);
 				break;
 			case '!':
-				p++;
-				if (!strcmp(p, "channel") || !strcmp(p, "group") || !strcmp(p, "here") || !strcmp(p, "everyone")) {
+				s++;
+				if (!strcmp(s, "channel") || !strcmp(s, "group") || !strcmp(s, "here") || !strcmp(s, "everyone")) {
 					*flags |= PURPLE_MESSAGE_NOTIFY;
 					g_string_append_c(html, '@');
-					g_string_append(html, b ?: p);
+					g_string_append(html, b ?: s);
 				} else {
 					g_string_append(html, "&lt;");
-					g_string_append(html, b ?: p);
+					g_string_append(html, b ?: s);
 					g_string_append(html, "&gt;");
 				}
 				break;
 			default:
 				/* URL */
-				g_string_append(html, "<a href=\"");
-				g_string_append(html, p); /* XXX embedded quotes? */
+				g_string_append(html, "<A HREF=\"");
+				g_string_append(html, s); /* XXX embedded quotes? */
 				g_string_append(html, "\">");
-				g_string_append(html, b ?: p);
-				g_string_append(html, "</a>");
+				g_string_append(html, b ?: s);
+				g_string_append(html, "</A>");
 		}
+		s = r+1;
 	}
 
 	return g_string_free(html, FALSE);
