@@ -6,14 +6,18 @@
 #include "slack-channel.h"
 #include "slack-message.h"
 
-static gchar *slack_message_to_html(SlackAccount *sa, gchar *s, PurpleMessageFlags *flags) {
+static gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subtype, PurpleMessageFlags *flags) {
 	g_return_val_if_fail(s, NULL);
-
-	*flags |= PURPLE_MESSAGE_NO_LINKIFY;
 
 	size_t l = strlen(s);
 	char *end = &s[l];
 	GString *html = g_string_sized_new(l);
+
+	if (!g_strcmp0(subtype, "me_message"))
+		g_string_append(html, "/me ");
+	else if (subtype)
+		*flags |= PURPLE_MESSAGE_SYSTEM;
+	*flags |= PURPLE_MESSAGE_NO_LINKIFY;
 
 	while (s < end) {
 		char c = *s++;
@@ -95,13 +99,10 @@ void slack_message(SlackAccount *sa, json_value *json) {
 	time_t mt = slack_parse_time(json_get_prop(json, "ts"));
 
 	PurpleMessageFlags flags = PURPLE_MESSAGE_RECV;
-	/* TODO: "me_message" */
-	if (subtype)
-		flags |= PURPLE_MESSAGE_SYSTEM; /* PURPLE_MESSAGE_NOTIFY? */
 	if (json_get_prop_boolean(json, "hidden", FALSE))
 		flags |= PURPLE_MESSAGE_INVISIBLE;
 
-	char *html = slack_message_to_html(sa, json_get_prop_strptr(json, "text"), &flags);
+	char *html = slack_message_to_html(sa, json_get_prop_strptr(json, "text"), subtype, &flags);
 
 	SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
 	SlackChannel *chan;
