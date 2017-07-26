@@ -224,6 +224,20 @@ static void channels_info_cb(SlackAccount *sa, gpointer data, json_value *json, 
 	}
 }
 
+void slack_chat_open(SlackAccount *sa, SlackChannel *chan) {
+	g_warn_if_fail(chan->type >= SLACK_CHANNEL_MEMBER);
+
+	if (chan->cid)
+		return;
+
+	chan->cid = ++sa->cid;
+	g_hash_table_insert(sa->channel_cids, GUINT_TO_POINTER(chan->cid), chan);
+
+	serv_got_joined_chat(sa->gc, chan->cid, chan->name);
+
+	slack_api_call(sa, channels_info_cb, GINT_TO_POINTER(chan->type), chan->type >= SLACK_CHANNEL_GROUP ? "groups.info" : "channels.info", "channel", chan->object.id, NULL);
+}
+
 static void channels_join_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
 	struct join_channel *join = data;
 
@@ -240,16 +254,8 @@ static void channels_join_cb(SlackAccount *sa, gpointer data, json_value *json, 
 		return;
 	}
 
-	g_warn_if_fail(chan->type >= SLACK_CHANNEL_MEMBER);
+	slack_chat_open(sa, chan);
 
-	if (!chan->cid) {
-		chan->cid = ++sa->cid;
-		g_hash_table_insert(sa->channel_cids, GUINT_TO_POINTER(chan->cid), chan);
-	}
-
-	serv_got_joined_chat(sa->gc, chan->cid, chan->name);
-
-	slack_api_call(sa, channels_info_cb, GINT_TO_POINTER(chan->type), chan->type >= SLACK_CHANNEL_GROUP ? "groups.info" : "channels.info", "channel", chan->object.id, NULL);
 	join_channel_free(join);
 }
 
@@ -332,4 +338,21 @@ int slack_chat_send(PurpleConnection *gc, int cid, const char *msg, PurpleMessag
 	g_string_free(text, TRUE);
 
 	return 1;
+}
+
+void slack_member_joined_channel(SlackAccount *sa, json_value *json, gboolean joined) {
+	SlackChannel *chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, json_get_prop_strptr(json, "channel"));
+	if (!chan)
+		return;
+
+	PurpleConvChat *conv = slack_channel_get_conversation(sa, chan);
+	if (!conv)
+		return;
+
+	const char *user_id = json_get_prop_strptr(json, "user");
+	SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
+	if (joined)
+		purple_conv_chat_add_user(conv, user ? user->name : user_id, NULL, PURPLE_CBFLAGS_VOICE, TRUE);
+	else
+		purple_conv_chat_remove_user(conv, user ? user->name : user_id, NULL);
 }

@@ -8,8 +8,11 @@
 
 void slack_blist_uncache(SlackAccount *sa, PurpleBlistNode *b);
 void slack_blist_cache(SlackAccount *sa, PurpleBlistNode *b, const char *id);
+
+/* Initialization */
 void slack_blist_init(SlackAccount *sa);
 
+/* Purple protocol handlers */
 PurpleChat *slack_find_blist_chat(PurpleAccount *account, const char *name);
 PurpleRoomlist *slack_roomlist_get_list(PurpleConnection *gc);
 void slack_roomlist_expand_category(PurpleRoomlist *list, PurpleRoomlistRoom *parent);

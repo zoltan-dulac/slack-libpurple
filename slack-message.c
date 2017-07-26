@@ -111,8 +111,11 @@ void slack_message(SlackAccount *sa, json_value *json) {
 		serv_got_im(sa->gc, user->name, html, flags, mt);
 	} else if ((chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, channel_id))) {
 		/* Channel */
-		if (!chan->cid)
-			return;
+		if (!chan->cid) {
+			if (!purple_account_get_bool(sa->account, "open_chat", FALSE))
+				return;
+			slack_chat_open(sa, chan);
+		}
 
 		PurpleConvChat *conv;
 		if (subtype && (conv = slack_channel_get_conversation(sa, chan))) {

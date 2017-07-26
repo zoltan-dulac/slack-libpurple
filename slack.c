@@ -149,7 +149,7 @@ static void slack_close(PurpleConnection *gc) {
 
 static PurplePluginProtocolInfo prpl_info = {
 	/* options */
-	OPT_PROTO_CHAT_TOPIC | OPT_PROTO_NO_PASSWORD, /* | OPT_PROTO_SLASH_COMMANDS_NATIVE */
+	OPT_PROTO_CHAT_TOPIC | OPT_PROTO_NO_PASSWORD | OPT_PROTO_SLASH_COMMANDS_NATIVE,
 	NULL,			/* user_splits */
 	NULL,			/* protocol_options */
 	NO_BUDDY_ICONS,
@@ -261,6 +261,9 @@ static void init_plugin(G_GNUC_UNUSED PurplePlugin *plugin)
 
 	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
 		purple_account_option_string_new("API token", "api_token", ""));
+
+	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
+		purple_account_option_bool_new("Open chat on channel message", "open_chat", FALSE));
 }
 
 PURPLE_INIT_PLUGIN(slack, init_plugin, info);

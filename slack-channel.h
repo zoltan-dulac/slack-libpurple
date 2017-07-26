@@ -31,10 +31,18 @@ G_DECLARE_FINAL_TYPE(SlackChannel, slack_channel, SLACK, CHANNEL, SlackObject)
 
 PurpleConvChat *slack_channel_get_conversation(SlackAccount *sa, SlackChannel *chan);
 
+/* Initialization */
 void slack_channels_load(SlackAccount *sa);
 void slack_groups_load(SlackAccount *sa);
-void slack_channel_update(SlackAccount *sa, json_value *json, SlackChannelType event);
 
+/* Open a purple conversation for a channel */
+void slack_chat_open(SlackAccount *sa, SlackChannel *chan);
+
+/* RTM event handlers */
+void slack_channel_update(SlackAccount *sa, json_value *json, SlackChannelType event);
+void slack_member_joined_channel(SlackAccount *sa, json_value *json, gboolean joined);
+
+/* Purple protocol handlers */
 void slack_join_chat(PurpleConnection *gc, GHashTable *info);
 void slack_chat_leave(PurpleConnection *gc, int cid);
 int slack_chat_send(PurpleConnection *gc, int cid, const char *msg, PurpleMessageFlags flags);
