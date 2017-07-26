@@ -2,6 +2,7 @@
 
 #include "slack-json.h"
 #include "slack-rtm.h"
+#include "slack-api.h"
 #include "slack-user.h"
 #include "slack-channel.h"
 #include "slack-message.h"
@@ -164,19 +165,56 @@ unsigned int slack_send_typing(PurpleConnection *gc, const char *who, PurpleTypi
 	return 3;
 }
 
-void slack_member_joined_channel(SlackAccount *sa, json_value *json, gboolean joined) {
-	SlackChannel *chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, json_get_prop_strptr(json, "channel"));
-	if (!chan)
+static void get_history_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
+	SlackObject *obj = data;
+	json_value *list = json_get_prop_type(json, "messages", array);
+
+	if (!list || error) {
+		purple_debug_error("slack", "Error loading channel history: %s\n", error ?: "missing");
+		g_object_unref(obj);
+		return;
+	}
+
+	/* what order are these in? */
+	for (unsigned i = list->u.array.length; i; i --) {
+		json_value *msg = list->u.array.values[i-1];
+		if (g_strcmp0(json_get_prop_strptr(msg, "type"), "message"))
+			continue;
+	}
+
+	g_object_unref(obj);
+}
+
+void slack_get_history(SlackAccount *sa, SlackObject *obj, const char *since, unsigned count) {
+	const char *call = NULL, *id = NULL;
+	SlackChannel *chan;
+	SlackUser *user;
+	if ((chan = SLACK_CHANNEL(obj))) {
+		switch (chan->type) {
+			case SLACK_CHANNEL_MEMBER:
+				call = "channels.history";
+				break;
+			case SLACK_CHANNEL_GROUP:
+				call = "groups.history";
+				break;
+			case SLACK_CHANNEL_MPIM:
+				call = "mpim.history";
+				break;
+			default:
+				break;
+		}
+		id = chan->object.id;
+	} else if ((user = SLACK_USER(obj))) {
+		if (*user->im) {
+			call = "im.history";
+			id = user->im;
+		}
+	}
+
+	if (!call)
 		return;
 
-	PurpleConvChat *conv = slack_channel_get_conversation(sa, chan);
-	if (!conv)
-		return;
-
-	const char *user_id = json_get_prop_strptr(json, "user");
-	SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
-	if (joined)
-		purple_conv_chat_add_user(conv, user ? user->name : user_id, NULL, PURPLE_CBFLAGS_VOICE, TRUE);
-	else
-		purple_conv_chat_remove_user(conv, user ? user->name : user_id, NULL);
+	char count_buf[6] = "";
+	snprintf(count_buf, 5, "%u", count);
+	slack_api_call(sa, get_history_cb, g_object_ref(obj), call, "channel", id, "oldest", since ?: "0", "count", count_buf, NULL);
 }
