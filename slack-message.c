@@ -92,11 +92,9 @@ static gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subt
 	return g_string_free(html, FALSE);
 }
 
-void slack_message(SlackAccount *sa, json_value *json) {
+static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json) {
 	const char *user_id    = json_get_prop_strptr(json, "user");
-	const char *channel_id = json_get_prop_strptr(json, "channel");
 	const char *subtype    = json_get_prop_strptr(json, "subtype");
-
 	time_t mt = slack_parse_time(json_get_prop(json, "ts"));
 
 	PurpleMessageFlags flags = PURPLE_MESSAGE_RECV;
@@ -105,18 +103,16 @@ void slack_message(SlackAccount *sa, json_value *json) {
 
 	char *html = slack_message_to_html(sa, json_get_prop_strptr(json, "text"), subtype, &flags);
 
-	SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
-	SlackChannel *chan;
-	if (user && slack_object_id_is(user->im, channel_id)) {
-		/* IM */
-		serv_got_im(sa->gc, user->name, html, flags, mt);
-	} else if ((chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, channel_id))) {
+	if (SLACK_IS_CHANNEL(obj)) {
+		SlackChannel *chan = (SlackChannel*)obj;
 		/* Channel */
 		if (!chan->cid) {
 			if (!purple_account_get_bool(sa->account, "open_chat", FALSE))
 				return;
 			slack_chat_open(sa, chan);
 		}
+
+		SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
 
 		PurpleConvChat *conv;
 		if (subtype && (conv = slack_channel_get_conversation(sa, chan))) {
@@ -126,9 +122,21 @@ void slack_message(SlackAccount *sa, json_value *json) {
 		}
 
 		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, html, mt);
-	} else {
-		purple_debug_warning("slack", "Unhandled message: %s@%s: %s\n", user_id, channel_id, html);
+	} else if (SLACK_IS_USER(obj)) {
+		SlackUser *user = (SlackUser*)obj;
+		/* IM */
+		if (!slack_object_id_is(user->object.id, user_id))
+			flags |= PURPLE_MESSAGE_SYSTEM; /* TODO: direct conversation message */
+		serv_got_im(sa->gc, user->name, html, flags, mt);
 	}
+}
+
+void slack_message(SlackAccount *sa, json_value *json) {
+	const char *channel_id = json_get_prop_strptr(json, "channel");
+
+	handle_message(sa, slack_object_hash_table_lookup(sa->channels, channel_id)
+			?: slack_object_hash_table_lookup(sa->ims,      channel_id),
+			json);
 }
 
 void slack_user_typing(SlackAccount *sa, json_value *json) {
@@ -180,6 +188,8 @@ static void get_history_cb(SlackAccount *sa, gpointer data, json_value *json, co
 		json_value *msg = list->u.array.values[i-1];
 		if (g_strcmp0(json_get_prop_strptr(msg, "type"), "message"))
 			continue;
+
+		handle_message(sa, obj, msg);
 	}
 
 	g_object_unref(obj);
@@ -187,9 +197,8 @@ static void get_history_cb(SlackAccount *sa, gpointer data, json_value *json, co
 
 void slack_get_history(SlackAccount *sa, SlackObject *obj, const char *since, unsigned count) {
 	const char *call = NULL, *id = NULL;
-	SlackChannel *chan;
-	SlackUser *user;
-	if ((chan = SLACK_CHANNEL(obj))) {
+	if (SLACK_IS_CHANNEL(obj)) {
+		SlackChannel *chan = (SlackChannel*)obj;
 		switch (chan->type) {
 			case SLACK_CHANNEL_MEMBER:
 				call = "channels.history";
@@ -204,7 +213,8 @@ void slack_get_history(SlackAccount *sa, SlackObject *obj, const char *since, un
 				break;
 		}
 		id = chan->object.id;
-	} else if ((user = SLACK_USER(obj))) {
+	} else if (SLACK_IS_USER(obj)) {
+		SlackUser *user = (SlackUser*)obj;
 		if (*user->im) {
 			call = "im.history";
 			id = user->im;

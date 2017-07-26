@@ -101,7 +101,7 @@ static void presence_set(SlackAccount *sa, json_value *json, const char *presenc
 	if (json->type != json_string)
 		return;
 	const char *id = json->u.string.ptr;
-	SlackUser *user = SLACK_USER(slack_object_hash_table_lookup(sa->users, id));
+	SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, id);
 	if (!user || !user->name)
 		return;
 	purple_debug_misc("slack", "setting user %s presence to %s\n", user->name, presence);
