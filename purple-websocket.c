@@ -59,9 +59,9 @@ static void buffer_set_len(struct buffer *b, size_t n) {
 }
 
 static inline guchar *buffer_incr(struct buffer *b, size_t n) {
-	guchar *p = &b->buf[b->len];
-	buffer_set_len(b, b->len + n);
-	return p;
+	gsize l = b->len;
+	buffer_set_len(b, l + n);
+	return &b->buf[l];
 }
 
 #define BUFFER_ADD(B, T, V) (*(T*)buffer_incr((B), sizeof(T)) = (V))

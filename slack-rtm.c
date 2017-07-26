@@ -102,8 +102,7 @@ static void rtm_cb(PurpleWebsocket *ws, gpointer data, PurpleWebsocketOp op, con
 		SlackRTMCall *call = g_hash_table_lookup(sa->rtm_call, GUINT_TO_POINTER(reply_to->u.integer));
 		if (call) {
 			g_hash_table_steal(sa->rtm_call, GUINT_TO_POINTER(reply_to->u.integer));
-			json_value *ok = json_get_prop_type(json, "ok", boolean);
-			if (!ok || !ok->u.boolean) {
+			if (!json_get_prop_boolean(json, "ok", FALSE)) {
 				json_value *err = json_get_prop(json, "error");
 				if (err->type == json_object)
 					err = json_get_prop(err, "msg");
@@ -144,9 +143,8 @@ static void rtm_connect_cb(SlackAccount *sa, gpointer data, json_value *json, co
 	}
 
 #define SET_STR(FIELD, JSON, PROP) ({ \
-		const char *_j = json_get_prop_strptr(JSON, PROP); \
 		g_free(sa->FIELD); \
-		sa->FIELD = g_strdup(_j); \
+		sa->FIELD = g_strdup(json_get_prop_strptr(JSON, PROP)); \
 	})
 
 	SET_STR(self, self, "id");
