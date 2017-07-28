@@ -19,12 +19,12 @@ typedef struct _SlackAccount {
 	gulong rtm_id;
 	GHashTable *rtm_call; /* unsigned rtm_id -> SlackRTMCall */
 
-	char *self; /* self id */
 	struct _SlackTeam {
 		char *id;
 		char *name;
 		char *domain;
 	} team;
+	struct _SlackUser *self;
 
 	GHashTable *users; /* slack_object_id user_id -> SlackUser (ref) */
 	GHashTable *user_names; /* char *user_name -> SlackUser (no ref) */

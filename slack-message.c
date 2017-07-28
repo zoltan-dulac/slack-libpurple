@@ -57,10 +57,14 @@ static gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subt
 			case '@':
 				s++;
 				g_string_append_c(html, '@');
-				if (!strcmp(s, sa->self))
+				SlackUser *user = NULL;
+				if (slack_object_id_is(sa->self->object.id, s)) {
+					user = sa->self;
 					*flags |= PURPLE_MESSAGE_NICK;
+				}
 				if (!b) {
-					SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, s);
+					if (!user)
+						user = (SlackUser*)slack_object_hash_table_lookup(sa->users, s);
 					if (user)
 						b = user->name;
 				}
@@ -92,12 +96,11 @@ static gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subt
 	return g_string_free(html, FALSE);
 }
 
-static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json) {
+static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json, PurpleMessageFlags flags) {
 	const char *user_id    = json_get_prop_strptr(json, "user");
 	const char *subtype    = json_get_prop_strptr(json, "subtype");
 	time_t mt = slack_parse_time(json_get_prop(json, "ts"));
 
-	PurpleMessageFlags flags = PURPLE_MESSAGE_RECV;
 	if (json_get_prop_boolean(json, "hidden", FALSE))
 		flags |= PURPLE_MESSAGE_INVISIBLE;
 
@@ -136,7 +139,7 @@ void slack_message(SlackAccount *sa, json_value *json) {
 
 	handle_message(sa, slack_object_hash_table_lookup(sa->channels, channel_id)
 			?: slack_object_hash_table_lookup(sa->ims,      channel_id),
-			json);
+			json, PURPLE_MESSAGE_RECV);
 }
 
 void slack_user_typing(SlackAccount *sa, json_value *json) {
@@ -189,7 +192,7 @@ static void get_history_cb(SlackAccount *sa, gpointer data, json_value *json, co
 		if (g_strcmp0(json_get_prop_strptr(msg, "type"), "message"))
 			continue;
 
-		handle_message(sa, obj, msg);
+		handle_message(sa, obj, msg, PURPLE_MESSAGE_RECV | PURPLE_MESSAGE_DELAYED);
 	}
 
 	g_object_unref(obj);

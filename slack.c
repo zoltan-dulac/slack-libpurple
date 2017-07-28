@@ -10,6 +10,7 @@
 #include <version.h>
 
 #include "slack.h"
+#include "slack-api.h"
 #include "slack-rtm.h"
 #include "slack-user.h"
 #include "slack-im.h"
@@ -37,6 +38,19 @@ static GList *slack_status_types(G_GNUC_UNUSED PurpleAccount *acct) {
 		purple_status_type_new(PURPLE_STATUS_OFFLINE, NULL, NULL, TRUE));
 
 	return types;
+}
+
+static void slack_set_status(PurpleAccount *account, PurpleStatus *status) {
+	PurpleConnection *gc = account->gc;
+	if (!gc)
+		return;
+	SlackAccount *sa = gc->proto_data;
+	g_return_if_fail(sa);
+
+	if (purple_status_is_active(status))
+		slack_api_call(sa, NULL, NULL, "users.setActive", NULL);
+	else
+		slack_api_call(sa, NULL, NULL, "users.setPresence", "presence", "away", NULL);
 }
 
 static GList *slack_chat_info(PurpleConnection *gc) {
@@ -139,7 +153,7 @@ static void slack_close(PurpleConnection *gc) {
 	g_free(sa->team.id);
 	g_free(sa->team.name);
 	g_free(sa->team.domain);
-	g_free(sa->self);
+	g_object_unref(sa->self);
 
 	g_free(sa->api_url);
 	g_free(sa->token);
@@ -155,7 +169,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	NO_BUDDY_ICONS,
 	slack_list_icon,	/* list_icon */
 	NULL,			/* list_emblems */
-	NULL,			/* status_text */
+	slack_status_text,	/* status_text */
 	NULL,			/* tooltip_text */
 	slack_status_types,	/* status_types */
 	NULL,			/* blist_node_menu */
@@ -164,10 +178,10 @@ static PurplePluginProtocolInfo prpl_info = {
 	slack_login,		/* login */
 	slack_close,		/* close */
 	slack_send_im,		/* send_im */
-	NULL,			/* set_info */
+	slack_set_info,		/* set_info */
 	slack_send_typing,	/* send_typing */
 	slack_get_info,		/* get_info */
-	NULL,			/* set_status */
+	slack_set_status,	/* set_status */
 	NULL,			/* set_idle */
 	NULL,			/* change_passwd */
 	NULL,			/* add_buddy */

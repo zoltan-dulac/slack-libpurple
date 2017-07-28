@@ -10,8 +10,8 @@ G_DEFINE_TYPE(SlackUser, slack_user, SLACK_TYPE_OBJECT);
 static void slack_user_finalize(GObject *gobj) {
 	SlackUser *user = SLACK_USER(gobj);
 
-	// purple_debug_misc("slack", "freeing user %s\n", user->object.id);
 	g_free(user->name);
+	g_free(user->status);
 
 	G_OBJECT_CLASS(slack_user_parent_class)->finalize(gobj);
 }
@@ -24,10 +24,10 @@ static void slack_user_class_init(SlackUserClass *klass) {
 static void slack_user_init(SlackUser *self) {
 }
 
-static gboolean user_update(SlackAccount *sa, json_value *json) {
+SlackUser *slack_user_update(SlackAccount *sa, json_value *json) {
 	const char *sid = json_get_prop_strptr(json, "id");
 	if (!sid)
-		return FALSE;
+		return NULL;
 	slack_object_id id;
 	slack_object_id_set(id, sid);
 
@@ -35,22 +35,19 @@ static gboolean user_update(SlackAccount *sa, json_value *json) {
 
 	if (json_get_prop_boolean(json, "deleted", FALSE)) {
 		if (!user)
-			return FALSE;
+			return NULL;
 		if (user->name)
 			g_hash_table_remove(sa->user_names, user->name);
 		if (*user->im)
 			g_hash_table_remove(sa->ims, user->im);
 		g_hash_table_remove(sa->users, id);
-		return TRUE;
+		return NULL;
 	}
-
-	gboolean changed = FALSE;
 
 	if (!user) {
 		user = g_object_new(SLACK_TYPE_USER, NULL);
 		slack_object_id_copy(user->object.id, id);
 		g_hash_table_replace(sa->users, user->object.id, user);
-		changed = TRUE;
 	}
 
 	const char *name = json_get_prop_strptr(json, "name");
@@ -66,14 +63,22 @@ static gboolean user_update(SlackAccount *sa, json_value *json) {
 		g_hash_table_insert(sa->user_names, user->name, user);
 		if (user->buddy)
 			purple_blist_rename_buddy(user->buddy, user->name);
-		changed = TRUE;
 	}
 
-	return changed;
+	json_value *profile = json_get_prop_type(json, "profile", object);
+	if (profile) {
+		g_free(user->status);
+		user->status = g_strdup(json_get_prop_strptr(profile, "status_text") ?: json_get_prop_strptr(profile, "current_status"));
+
+		if (user == sa->self)
+			purple_account_set_user_info(sa->account, sa->self->status);
+	}
+
+	return user;
 }
 
 void slack_user_changed(SlackAccount *sa, json_value *json) {
-	user_update(sa, json_get_prop(json, "user"));
+	slack_user_update(sa, json_get_prop(json, "user"));
 }
 
 static void users_list_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
@@ -87,7 +92,7 @@ static void users_list_cb(SlackAccount *sa, gpointer data, json_value *json, con
 
 	g_hash_table_remove_all(sa->users);
 	for (unsigned i = 0; i < members->u.array.length; i ++)
-		user_update(sa, members->u.array.values[i]);
+		slack_user_update(sa, members->u.array.values[i]);
 
 	slack_ims_load(sa);
 }
@@ -121,6 +126,21 @@ void slack_presence_change(SlackAccount *sa, json_value *json) {
 			presence_set(sa, users->u.array.values[i], presence);
 	else
 		presence_set(sa, users, presence);
+}
+
+char *slack_status_text(PurpleBuddy *buddy) {
+	PurpleConnection *gc = buddy->account->gc;
+	if (!gc)
+		return NULL;
+	SlackAccount *sa = gc->proto_data;
+	g_return_val_if_fail(sa, NULL);
+	/*
+	const char *bid = purple_blist_node_get_string(buddy, SLACK_BLIST_KEY);
+	if (bid)
+		user = slack_object_hash_table_lookup(sa->users, bid);
+	*/
+	SlackUser *user = g_hash_table_lookup(sa->user_names, purple_buddy_get_name(buddy));
+	return user ? g_strdup(user->status) : NULL;
 }
 
 static void users_info_cb(SlackAccount *sa, gpointer data, json_value *json, const char *error) {
@@ -186,6 +206,11 @@ static void users_info_cb(SlackAccount *sa, gpointer data, json_value *json, con
 	g_free(who);
 }
 
+void slack_set_info(PurpleConnection *gc, const char *info) {
+	SlackAccount *sa = gc->proto_data;
+	slack_api_call(sa, NULL, NULL, "users.profile.set", "name", "status_text", "value", info, NULL);
+}
+
 void slack_get_info(PurpleConnection *gc, const char *who) {
 	SlackAccount *sa = gc->proto_data;
 	SlackUser *user = g_hash_table_lookup(sa->user_names, who);
@@ -194,4 +219,3 @@ void slack_get_info(PurpleConnection *gc, const char *who) {
 	else
 		slack_api_call(sa, users_info_cb, g_strdup(who), "users.info", "user", user->object.id, NULL);
 }
-

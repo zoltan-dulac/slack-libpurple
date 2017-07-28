@@ -15,6 +15,8 @@ struct _SlackUser {
 	/* when there is an open IM channel: */
 	slack_object_id im;
 	PurpleBuddy *buddy;
+
+	char *status;
 };
 
 #define SLACK_TYPE_USER slack_user_get_type()
@@ -23,11 +25,15 @@ G_DECLARE_FINAL_TYPE(SlackUser, slack_user, SLACK, USER, SlackObject)
 /* Initialization */
 void slack_users_load(SlackAccount *sa);
 
+SlackUser *slack_user_update(SlackAccount *sa, json_value *json);
+
 /* RTM event handlers */
 void slack_user_changed(SlackAccount *sa, json_value *json);
 void slack_presence_change(SlackAccount *sa, json_value *json);
 
 /* Purple protocol handlers */
+void slack_set_info(PurpleConnection *gc, const char *info);
+char *slack_status_text(PurpleBuddy *buddy);
 void slack_get_info(PurpleConnection *gc, const char *who);
 
 #endif // _PURPLE_SLACK_USER_H

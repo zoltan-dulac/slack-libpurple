@@ -133,25 +133,22 @@ static void rtm_connect_cb(SlackAccount *sa, gpointer data, json_value *json, co
 	}
 
 	const char *url     = json_get_prop_strptr(json, "url");
-	json_value *self    = json_get_prop_type(json, "self", object);
-	const char *self_id = json_get_prop_strptr(self, "id");
+	if (sa->self)
+		g_object_unref(sa->self);
+	sa->self = g_object_ref(slack_user_update(sa, json_get_prop_type(json, "self", object)));
 
-	if (!url || !self_id) {
+	if (!url || !sa->self) {
 		purple_connection_error_reason(sa->gc,
 				slack_api_connection_error(error), error ?: "Missing RTM parameters");
 		return;
 	}
 
+	purple_connection_set_display_name(sa->gc, sa->self->name);
+
 #define SET_STR(FIELD, JSON, PROP) ({ \
 		g_free(sa->FIELD); \
 		sa->FIELD = g_strdup(json_get_prop_strptr(JSON, PROP)); \
 	})
-
-	SET_STR(self, self, "id");
-
-	const char *self_name = json_get_prop_strptr(self, "name");
-	if (self_name)
-		purple_connection_set_display_name(sa->gc, self_name);
 
 	json_value *team = json_get_prop_type(json, "team", object);
 	SET_STR(team.id, team, "id");

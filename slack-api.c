@@ -1,3 +1,5 @@
+#include <debug.h>
+
 #include "slack-api.h"
 #include "slack-json.h"
 
@@ -18,12 +20,15 @@ struct _SlackAPICall {
 };
 
 static void api_error(SlackAPICall *call, const char *error) {
-	call->callback(call->sa, call->data, NULL, error);
+	if (call->callback)
+		call->callback(call->sa, call->data, NULL, error);
 	g_free(call);
 };
 
 static void api_cb(G_GNUC_UNUSED PurpleUtilFetchUrlData *fetch, gpointer data, const gchar *buf, gsize len, const gchar *error) {
 	SlackAPICall *call = data;
+
+	purple_debug_misc("slack", "api response: %s\n", error ?: buf);
 	if (error) {
 		api_error(call, error);
 		return;
@@ -39,7 +44,7 @@ static void api_cb(G_GNUC_UNUSED PurpleUtilFetchUrlData *fetch, gpointer data, c
 		const char *err = json_get_prop_strptr(json, "error");
 		api_error(call, err ?: "Unknown error");
 		call = NULL;
-	} else {
+	} else if (call->callback) {
 		call->callback(call->sa, call->data, json, NULL);
 	}
 
@@ -66,6 +71,7 @@ void slack_api_call(SlackAccount *sa, SlackAPICallback callback, gpointer user_d
 	}
 	va_end(qargs);
 
+	purple_debug_misc("slack", "api call: %s\n", url->str);
 	call->fetch = purple_util_fetch_url_request_data_len_with_account(sa->account,
 			url->str, TRUE, NULL, TRUE, NULL, 0, FALSE, 4096*1024,
 			api_cb, call);
