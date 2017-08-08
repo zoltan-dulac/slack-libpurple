@@ -7,6 +7,37 @@
 #include "slack-channel.h"
 #include "slack-message.h"
 
+gchar *slack_html_to_message(SlackAccount *sa, const char *s, PurpleMessageFlags flags) {
+	if (flags & PURPLE_MESSAGE_RAW)
+		return g_strdup(s);
+
+	GString *msg = g_string_sized_new(strlen(s));
+	while (*s) {
+		const char *ent;
+		int len;
+		if ((ent = purple_markup_unescape_entity(s, &len))) {
+			if (!strcmp(ent, "&"))
+				g_string_append(msg, "&amp;");
+			else if (!strcmp(ent, "<"))
+				g_string_append(msg, "&lt;");
+			else if (!strcmp(ent, ">"))
+				g_string_append(msg, "&gt;");
+			else
+				g_string_append(msg, ent);
+			s += len;
+		}
+		else if (!g_ascii_strncasecmp(s, "<br>", 4)) {
+			g_string_append_c(msg, '\n');
+			s += 4;
+		} else {
+			/* what about other tags? user/channel refs? urls? dates? */
+			g_string_append_c(msg, *s++);
+		}
+	}
+
+	return g_string_free(msg, FALSE);
+}
+
 static gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subtype, PurpleMessageFlags *flags) {
 	g_return_val_if_fail(s, NULL);
 

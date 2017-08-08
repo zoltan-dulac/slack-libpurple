@@ -6,6 +6,7 @@
 #include "slack-api.h"
 #include "slack-rtm.h"
 #include "slack-blist.h"
+#include "slack-message.h"
 #include "slack-user.h"
 #include "slack-channel.h"
 #include "slack-im.h"
@@ -171,17 +172,18 @@ static void send_im_open_cb(SlackAccount *sa, gpointer data, json_value *json, c
 int slack_send_im(PurpleConnection *gc, const char *who, const char *msg, PurpleMessageFlags flags) {
 	SlackAccount *sa = gc->proto_data;
 
-	glong mlen = g_utf8_strlen(msg, 16384);
-	if (mlen > 4000)
-		return -E2BIG;
-
 	SlackUser *user = g_hash_table_lookup(sa->user_names, who);
 	if (!user)
 		return -ENOENT;
 
+	gchar *m = slack_html_to_message(sa, msg, flags);
+	glong mlen = g_utf8_strlen(m, 16384);
+	if (mlen > 4000)
+		return -E2BIG;
+
 	struct send_im *send = g_new(struct send_im, 1);
 	send->user = g_object_ref(user);
-	send->msg = g_strdup(msg);
+	send->msg = m;
 	send->flags = flags;
 
 	if (!*user->im)

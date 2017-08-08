@@ -6,6 +6,7 @@
 #include "slack-api.h"
 #include "slack-blist.h"
 #include "slack-rtm.h"
+#include "slack-message.h"
 #include "slack-user.h"
 #include "slack-channel.h"
 
@@ -318,13 +319,14 @@ static void send_chat_cb(SlackAccount *sa, gpointer data, json_value *json, cons
 int slack_chat_send(PurpleConnection *gc, int cid, const char *msg, PurpleMessageFlags flags) {
 	SlackAccount *sa = gc->proto_data;
 
-	glong mlen = g_utf8_strlen(msg, 16384);
-	if (mlen > 4000)
-		return -E2BIG;
-
 	SlackChannel *chan = g_hash_table_lookup(sa->channel_cids, GUINT_TO_POINTER(cid));
 	if (!chan)
 		return -ENOENT;
+
+	gchar *m = slack_html_to_message(sa, msg, flags);
+	glong mlen = g_utf8_strlen(m, 16384);
+	if (mlen > 4000)
+		return -E2BIG;
 
 	struct send_chat *send = g_new(struct send_chat, 1);
 	send->chan = g_object_ref(chan);
@@ -332,10 +334,11 @@ int slack_chat_send(PurpleConnection *gc, int cid, const char *msg, PurpleMessag
 	send->flags = flags;
 
 	GString *channel = append_json_string(g_string_new(NULL), chan->object.id);
-	GString *text = append_json_string(g_string_new(NULL), msg);
+	GString *text = append_json_string(g_string_new(NULL), m);
 	slack_rtm_send(sa, send_chat_cb, send, "message", "channel", channel->str, "text", text->str, NULL);
 	g_string_free(channel, TRUE);
 	g_string_free(text, TRUE);
+	g_free(m);
 
 	return 1;
 }

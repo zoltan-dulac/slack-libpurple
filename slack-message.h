@@ -5,6 +5,8 @@
 
 #include "slack.h"
 
+gchar *slack_html_to_message(SlackAccount *sa, const char *s, PurpleMessageFlags flags);
+
 /* RTM event handlers */
 void slack_message(SlackAccount *sa, json_value *json);
 void slack_user_typing(SlackAccount *sa, json_value *json);
