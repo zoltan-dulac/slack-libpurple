@@ -184,7 +184,7 @@ void slack_user_typing(SlackAccount *sa, json_value *json) {
 		serv_got_typing(sa->gc, user->name, 3, PURPLE_TYPING);
 	} else if ((chan = (SlackChannel*)slack_object_hash_table_lookup(sa->channels, channel_id))) {
 		/* Channel */
-		/* libpurple does not support chat typing indicators */
+		/* TODO: purple_conv_chat_user_set_flags (though nothing seems to use this) */
 	} else {
 		purple_debug_warning("slack", "Unhandled typing: %s@%s\n", user_id, channel_id);
 	}

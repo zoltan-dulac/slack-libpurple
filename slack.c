@@ -141,6 +141,8 @@ static void slack_close(PurpleConnection *gc) {
 		purple_websocket_abort(sa->rtm);
 	g_hash_table_destroy(sa->rtm_call);
 
+	if (sa->roomlist)
+		purple_roomlist_unref(sa->roomlist);
 	g_hash_table_destroy(sa->buddies);
 
 	g_hash_table_destroy(sa->channel_cids);
@@ -216,7 +218,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	NULL,			/* set_chat_topic */
 	slack_find_blist_chat,	/* find_blist_chat */
 	slack_roomlist_get_list,/* roomlist_get_list */
-	NULL,			/* roomlist_cancel */
+	slack_roomlist_cancel,	/* roomlist_cancel */
 	slack_roomlist_expand_category,	/* roomlist_expand_category */
 	NULL,			/* can_receive_file */
 	NULL,			/* send_file */

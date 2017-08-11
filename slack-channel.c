@@ -354,8 +354,10 @@ void slack_member_joined_channel(SlackAccount *sa, json_value *json, gboolean jo
 
 	const char *user_id = json_get_prop_strptr(json, "user");
 	SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
-	if (joined)
-		purple_conv_chat_add_user(conv, user ? user->name : user_id, NULL, PURPLE_CBFLAGS_VOICE, TRUE);
-	else
+	if (joined) {
+		PurpleConvChatBuddyFlags flag = PURPLE_CBFLAGS_VOICE;
+		/* TODO we don't know creator here */
+		purple_conv_chat_add_user(conv, user ? user->name : user_id, NULL, flag, TRUE);
+	} else
 		purple_conv_chat_remove_user(conv, user ? user->name : user_id, NULL);
 }

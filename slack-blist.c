@@ -1,5 +1,7 @@
 #include <string.h>
 
+#include <debug.h>
+
 #include "slack-json.h"
 #include "slack-channel.h"
 #include "slack-user.h"
@@ -129,6 +131,8 @@ void slack_roomlist_expand_category(PurpleRoomlist *list, PurpleRoomlistRoom *pa
 		return;
 	SlackAccount *sa = list->account->gc->proto_data;
 
+	g_warn_if_fail(list == sa->roomlist);
+
 	struct roomlist_expand *expand = g_new0(struct roomlist_expand, 1);
 	expand->list = list;
 	expand->parent = parent;
@@ -159,7 +163,10 @@ void slack_roomlist_expand_category(PurpleRoomlist *list, PurpleRoomlistRoom *pa
 PurpleRoomlist *slack_roomlist_get_list(PurpleConnection *gc) {
 	SlackAccount *sa = gc->proto_data;
 
-	PurpleRoomlist *list = purple_roomlist_new(sa->account);
+	if (sa->roomlist)
+		purple_roomlist_unref(sa->roomlist);
+
+	PurpleRoomlist *list = sa->roomlist = purple_roomlist_new(sa->account);
 
 	GList *fields = NULL;
 	fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "ID", "id", TRUE));
@@ -178,6 +185,16 @@ PurpleRoomlist *slack_roomlist_get_list(PurpleConnection *gc) {
 	purple_roomlist_room_add(list, purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_CATEGORY, "Archived", public));
 	purple_roomlist_room_add(list, purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_CATEGORY, "Archived", private));
 
-	purple_roomlist_unref(list);
 	return list;
+}
+
+void slack_roomlist_cancel(PurpleRoomlist *list) {
+	if (!list->account || !list->account->gc || !list->account->gc->proto_data || strcmp(list->account->protocol_id, SLACK_PLUGIN_ID))
+		return;
+	SlackAccount *sa = list->account->gc->proto_data;
+
+	if (sa->roomlist == list) {
+		purple_roomlist_unref(list);
+		sa->roomlist = NULL;
+	}
 }
