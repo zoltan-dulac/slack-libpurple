@@ -158,10 +158,19 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, html, mt);
 	} else if (SLACK_IS_USER(obj)) {
 		SlackUser *user = (SlackUser*)obj;
+		const char *name;
 		/* IM */
-		if (!slack_object_id_is(user->object.id, user_id))
+		if (slack_object_id_is(user->object.id, user_id))
+			name = user->name;
+		else if (slack_object_id_is(sa->self->object.id, user_id)) {
+			name = sa->self->name;
+			flags |= PURPLE_MESSAGE_REMOTE_SEND;
+		}
+		else {
+			name = user_id;
 			flags |= PURPLE_MESSAGE_SYSTEM; /* TODO: direct conversation message */
-		serv_got_im(sa->gc, user->name, html, flags, mt);
+		}
+		serv_got_im(sa->gc, name, html, flags, mt);
 	}
 }
 
