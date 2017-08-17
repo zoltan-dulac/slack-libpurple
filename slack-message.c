@@ -134,6 +134,8 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 
 	if (json_get_prop_boolean(json, "hidden", FALSE))
 		flags |= PURPLE_MESSAGE_INVISIBLE;
+	if (slack_object_id_is(sa->self->object.id, user_id))
+		flags |= PURPLE_MESSAGE_REMOTE_SEND;
 
 	char *html = slack_message_to_html(sa, json_get_prop_strptr(json, "text"), subtype, &flags);
 
@@ -158,19 +160,19 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, html, mt);
 	} else if (SLACK_IS_USER(obj)) {
 		SlackUser *user = (SlackUser*)obj;
-		const char *name;
 		/* IM */
 		if (slack_object_id_is(user->object.id, user_id))
-			name = user->name;
-		else if (slack_object_id_is(sa->self->object.id, user_id)) {
-			name = sa->self->name;
-			flags |= PURPLE_MESSAGE_REMOTE_SEND;
-		}
+			serv_got_im(sa->gc, user->name, html, flags, mt);
 		else {
-			name = user_id;
-			flags |= PURPLE_MESSAGE_SYSTEM; /* TODO: direct conversation message */
+			PurpleConversation *conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, user->name, sa->account);
+			if (!conv)
+				conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, sa->account, user->name);
+			if (flags & PURPLE_MESSAGE_REMOTE_SEND)
+				user = sa->self;
+			else
+				user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
+			purple_conversation_write(conv, user ? user->name : user_id, html, flags, mt);
 		}
-		serv_got_im(sa->gc, name, html, flags, mt);
 	}
 }
 
