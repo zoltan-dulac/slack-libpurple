@@ -1,6 +1,8 @@
 #ifndef _PURPLE_SLACK_H
 #define _PURPLE_SLACK_H
 
+#include <string.h>
+
 #include <account.h>
 
 #include "purple-websocket.h"
@@ -41,5 +43,11 @@ typedef struct _SlackAccount {
 } SlackAccount;
 
 GHashTable *slack_chat_info_defaults(PurpleConnection *gc, const char *name);
+
+static inline SlackAccount *get_slack_account(PurpleAccount *account) {
+	if (!account || !account->gc || strcmp(account->protocol_id, SLACK_PLUGIN_ID))
+		return NULL;
+	return account->gc->proto_data;
+}
 
 #endif // _PURPLE_SLACK_H

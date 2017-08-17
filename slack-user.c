@@ -2,6 +2,7 @@
 
 #include "slack-json.h"
 #include "slack-api.h"
+#include "slack-blist.h"
 #include "slack-user.h"
 #include "slack-im.h"
 
@@ -129,17 +130,10 @@ void slack_presence_change(SlackAccount *sa, json_value *json) {
 }
 
 char *slack_status_text(PurpleBuddy *buddy) {
-	PurpleConnection *gc = buddy->account->gc;
-	if (!gc)
-		return NULL;
-	SlackAccount *sa = gc->proto_data;
-	g_return_val_if_fail(sa, NULL);
-	/*
-	const char *bid = purple_blist_node_get_string(buddy, SLACK_BLIST_KEY);
-	if (bid)
-		user = slack_object_hash_table_lookup(sa->users, bid);
-	*/
-	SlackUser *user = g_hash_table_lookup(sa->user_names, purple_buddy_get_name(buddy));
+	SlackAccount *sa;
+	SlackObject *obj = slack_blist_node_get_obj(PURPLE_BLIST_NODE(buddy), &sa);
+	g_return_val_if_fail(SLACK_IS_USER(obj), NULL);
+	SlackUser *user = (SlackUser*)obj;
 	return user ? g_strdup(user->status) : NULL;
 }
 

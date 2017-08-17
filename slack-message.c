@@ -104,7 +104,7 @@ static gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subt
 			case '!':
 				s++;
 				if (!strcmp(s, "channel") || !strcmp(s, "group") || !strcmp(s, "here") || !strcmp(s, "everyone")) {
-					*flags |= PURPLE_MESSAGE_NOTIFY;
+					*flags |= PURPLE_MESSAGE_NICK;
 					g_string_append_c(html, '@');
 					g_string_append(html, b ?: s);
 				} else {
@@ -234,7 +234,7 @@ static void get_history_cb(SlackAccount *sa, gpointer data, json_value *json, co
 		if (g_strcmp0(json_get_prop_strptr(msg, "type"), "message"))
 			continue;
 
-		handle_message(sa, obj, msg, PURPLE_MESSAGE_RECV | PURPLE_MESSAGE_DELAYED);
+		handle_message(sa, obj, msg, PURPLE_MESSAGE_RECV | PURPLE_MESSAGE_DELAYED | PURPLE_MESSAGE_NO_LOG);
 	}
 
 	g_object_unref(obj);
@@ -244,6 +244,8 @@ void slack_get_history(SlackAccount *sa, SlackObject *obj, const char *since, un
 	const char *call = NULL, *id = NULL;
 	if (SLACK_IS_CHANNEL(obj)) {
 		SlackChannel *chan = (SlackChannel*)obj;
+		if (!chan->cid)
+			slack_chat_open(sa, chan);
 		switch (chan->type) {
 			case SLACK_CHANNEL_MEMBER:
 				call = "channels.history";

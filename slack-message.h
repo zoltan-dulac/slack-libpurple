@@ -6,6 +6,7 @@
 #include "slack.h"
 
 gchar *slack_html_to_message(SlackAccount *sa, const char *s, PurpleMessageFlags flags);
+void slack_get_history(SlackAccount *sa, SlackObject *obj, const char *since, unsigned count);
 
 /* RTM event handlers */
 void slack_message(SlackAccount *sa, json_value *json);

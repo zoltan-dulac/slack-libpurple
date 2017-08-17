@@ -174,7 +174,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	slack_status_text,	/* status_text */
 	NULL,			/* tooltip_text */
 	slack_status_types,	/* status_types */
-	NULL,			/* blist_node_menu */
+	slack_blist_node_menu,	/* blist_node_menu */
 	slack_chat_info,	/* chat_info */
 	slack_chat_info_defaults, /* chat_info_defaults */
 	slack_login,		/* login */
@@ -231,7 +231,7 @@ static PurplePluginProtocolInfo prpl_info = {
 	NULL,			/* send_attention */
 	NULL,			/* attention_types */
 	sizeof(PurplePluginProtocolInfo),	/* struct_size */
-	NULL,			/*campfire_get_account_text_table *//* get_account_text_table */
+	NULL,			/* get_account_text_table */
 	NULL,			/* initiate_media */
 	NULL,			/* get_media_caps */
 	NULL,			/* get_moods */

@@ -1,11 +1,13 @@
 #include <string.h>
 
+#include <request.h>
 #include <debug.h>
 
 #include "slack-json.h"
 #include "slack-channel.h"
 #include "slack-user.h"
 #include "slack-api.h"
+#include "slack-message.h"
 #include "slack-blist.h"
 
 void slack_blist_uncache(SlackAccount *sa, PurpleBlistNode *b) {
@@ -25,8 +27,8 @@ void slack_blist_cache(SlackAccount *sa, PurpleBlistNode *b, const char *id) {
 
 void slack_buddy_free(PurpleBuddy *b) {
 	/* This should be unnecessary, as there's no analogue for PurpleChat so we have to deal with cleanup elsewhere anyway */
-	if (b->account->gc && b->account->gc->proto_data)
-	slack_blist_uncache(b->account->gc->proto_data, &b->node);
+	SlackAccount *sa = get_slack_account(b->account);
+	if (sa) slack_blist_uncache(sa, &b->node);
 }
 
 #define PURPLE_BLIST_ACCOUNT(n) \
@@ -35,6 +37,17 @@ void slack_buddy_free(PurpleBuddy *b) {
 	: PURPLE_BLIST_NODE_IS_CHAT(n) \
 		? PURPLE_CHAT(n)->account \
 		: NULL)
+
+SlackObject *slack_blist_node_get_obj(PurpleBlistNode *buddy, SlackAccount **sap) {
+	*sap = get_slack_account(PURPLE_BLIST_ACCOUNT(buddy));
+	if (!*sap)
+		return NULL;
+	if (PURPLE_BLIST_NODE_IS_BUDDY(buddy))
+		return g_hash_table_lookup((*sap)->user_names, purple_buddy_get_name(PURPLE_BUDDY(buddy)));
+	else if (PURPLE_BLIST_NODE_IS_CHAT(buddy))
+		return g_hash_table_lookup((*sap)->channel_names, purple_chat_get_name(PURPLE_CHAT(buddy)));
+	return NULL;
+}
 
 void slack_blist_init(SlackAccount *sa) {
 	char *id = sa->team.id ?: "";
@@ -71,15 +84,49 @@ void slack_blist_init(SlackAccount *sa) {
 }
 
 PurpleChat *slack_find_blist_chat(PurpleAccount *account, const char *name) {
-	if (account->gc && account->gc->proto_data) {
-		SlackAccount *sa = account->gc->proto_data;
-		if (sa->channel_names) {
-			SlackChannel *chan = g_hash_table_lookup(sa->channel_names, name);
-			if (chan && chan->buddy)
-				return chan->buddy;
-		}
+	SlackAccount *sa = get_slack_account(account);
+	if (sa && sa->channel_names) {
+		SlackChannel *chan = g_hash_table_lookup(sa->channel_names, name);
+		if (chan && chan->buddy)
+			return chan->buddy;
 	}
 	return purple_blist_find_chat(account, name);
+}
+
+static void get_history_cb(PurpleBlistNode *buddy, PurpleRequestFields *fields) {
+	SlackAccount *sa;
+	SlackObject *obj = slack_blist_node_get_obj(buddy, &sa);
+	g_return_if_fail(obj);
+
+	slack_get_history(sa, obj, NULL, purple_request_fields_get_integer(fields, "count"));
+}
+
+static void get_history_prompt(PurpleBlistNode *buddy) {
+	SlackAccount *sa = get_slack_account(PURPLE_BLIST_ACCOUNT(buddy));
+	const char *name = PURPLE_BLIST_NODE_NAME(buddy);
+	g_return_if_fail(sa && name);
+
+	PurpleRequestFields *fields = purple_request_fields_new();
+	PurpleRequestFieldGroup *group = purple_request_field_group_new("NULL");
+	PurpleRequestField *field = purple_request_field_int_new("count", "Count", 100);
+	purple_request_field_set_required(field, TRUE);
+	purple_request_field_group_add_field(group, field);
+	purple_request_fields_add_group(fields, group);
+	gchar *primary = g_strdup_printf("Retrieve message history for %c%s", PURPLE_BLIST_NODE_IS_BUDDY(buddy) ? '@' : '#', name);
+	PurpleConversation *conv = purple_find_conversation_with_account(PURPLE_BLIST_NODE_IS_BUDDY(buddy) ? PURPLE_CONV_TYPE_IM : PURPLE_CONV_TYPE_CHAT, name, sa->account);
+	purple_request_fields(sa->gc, "Get History", primary, NULL, fields, "Get", G_CALLBACK(get_history_cb), "Cancel", NULL, sa->account, name, conv, buddy);
+	g_free(primary);
+}
+
+GList *slack_blist_node_menu(PurpleBlistNode *buddy) {
+	GList *menu = NULL;
+	SlackAccount *sa = get_slack_account(PURPLE_BLIST_ACCOUNT(buddy));
+
+	if (sa) {
+		menu = g_list_append(menu, purple_menu_action_new("Get history", G_CALLBACK(get_history_prompt), buddy, NULL));
+	}
+	
+	return menu;
 }
 
 struct roomlist_expand {
@@ -127,9 +174,9 @@ static void roomlist_cb(SlackAccount *sa, gpointer data, json_value *json, const
 }
 
 void slack_roomlist_expand_category(PurpleRoomlist *list, PurpleRoomlistRoom *parent) {
-	if (!list->account || !list->account->gc || !list->account->gc->proto_data || strcmp(list->account->protocol_id, SLACK_PLUGIN_ID))
+	SlackAccount *sa = get_slack_account(list->account);
+	if (!sa)
 		return;
-	SlackAccount *sa = list->account->gc->proto_data;
 
 	g_warn_if_fail(list == sa->roomlist);
 
@@ -189,9 +236,9 @@ PurpleRoomlist *slack_roomlist_get_list(PurpleConnection *gc) {
 }
 
 void slack_roomlist_cancel(PurpleRoomlist *list) {
-	if (!list->account || !list->account->gc || !list->account->gc->proto_data || strcmp(list->account->protocol_id, SLACK_PLUGIN_ID))
+	SlackAccount *sa = get_slack_account(list->account);
+	if (!sa)
 		return;
-	SlackAccount *sa = list->account->gc->proto_data;
 
 	if (sa->roomlist == list) {
 		purple_roomlist_unref(list);
