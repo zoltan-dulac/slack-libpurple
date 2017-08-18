@@ -1,4 +1,5 @@
 #include <debug.h>
+#include <version.h>
 
 #include "slack-json.h"
 #include "slack-rtm.h"
@@ -134,8 +135,14 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 
 	if (json_get_prop_boolean(json, "hidden", FALSE))
 		flags |= PURPLE_MESSAGE_INVISIBLE;
-	if (slack_object_id_is(sa->self->object.id, user_id))
+
+	SlackUser *user = NULL;
+	if (slack_object_id_is(sa->self->object.id, user_id)) {
+		user = sa->self;
+#if PURPLE_VERSION_CHECK(2,12,0)
 		flags |= PURPLE_MESSAGE_REMOTE_SEND;
+#endif
+	}
 
 	char *html = slack_message_to_html(sa, json_get_prop_strptr(json, "text"), subtype, &flags);
 
@@ -148,7 +155,8 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 			slack_chat_open(sa, chan);
 		}
 
-		SlackUser *user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
+		if (!user)
+			user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
 
 		PurpleConvChat *conv;
 		if (subtype && (conv = slack_channel_get_conversation(sa, chan))) {
@@ -159,17 +167,16 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 
 		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, html, mt);
 	} else if (SLACK_IS_USER(obj)) {
-		SlackUser *user = (SlackUser*)obj;
+		SlackUser *im = (SlackUser*)obj;
 		/* IM */
-		if (slack_object_id_is(user->object.id, user_id))
-			serv_got_im(sa->gc, user->name, html, flags, mt);
+		if (slack_object_id_is(im->object.id, user_id))
+			serv_got_im(sa->gc, im->name, html, flags, mt);
 		else {
-			PurpleConversation *conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, user->name, sa->account);
+			PurpleConversation *conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, im->name, sa->account);
 			if (!conv)
-				conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, sa->account, user->name);
-			if (flags & PURPLE_MESSAGE_REMOTE_SEND)
-				user = sa->self;
-			else
+				conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, sa->account, im->name);
+			if (!user)
+				/* is this necessary? shouldn't be anyone else in here */
 				user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
 			purple_conversation_write(conv, user ? user->name : user_id, html, flags, mt);
 		}
