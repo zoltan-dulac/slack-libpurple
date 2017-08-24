@@ -361,3 +361,13 @@ void slack_member_joined_channel(SlackAccount *sa, json_value *json, gboolean jo
 	} else
 		purple_conv_chat_remove_user(conv, user ? user->name : user_id, NULL);
 }
+
+void slack_set_chat_topic(PurpleConnection *gc, int cid, const char *topic) {
+	SlackAccount *sa = gc->proto_data;
+
+	SlackChannel *chan = g_hash_table_lookup(sa->channel_cids, GUINT_TO_POINTER(cid));
+	if (!chan)
+		return;
+
+	slack_api_call(sa, NULL, NULL, chan->type >= SLACK_CHANNEL_GROUP ? "groups.setTopic" : "channels.setTopic", "channel", chan->object.id, "topic", topic, NULL);
+}

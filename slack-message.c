@@ -243,6 +243,7 @@ static void get_history_cb(SlackAccount *sa, gpointer data, json_value *json, co
 
 		handle_message(sa, obj, msg, PURPLE_MESSAGE_RECV | PURPLE_MESSAGE_DELAYED | PURPLE_MESSAGE_NO_LOG);
 	}
+	/* TODO: has_more? */
 
 	g_object_unref(obj);
 }
