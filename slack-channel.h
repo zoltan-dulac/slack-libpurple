@@ -46,6 +46,7 @@ void slack_member_joined_channel(SlackAccount *sa, json_value *json, gboolean jo
 void slack_join_chat(PurpleConnection *gc, GHashTable *info);
 void slack_chat_leave(PurpleConnection *gc, int cid);
 int slack_chat_send(PurpleConnection *gc, int cid, const char *msg, PurpleMessageFlags flags);
+void slack_chat_invite(PurpleConnection *gc, int cid, const char *message, const char *who);
 void slack_set_chat_topic(PurpleConnection *gc, int id, const char *topic);
 
 #endif // _PURPLE_SLACK_USER_H
