@@ -280,6 +280,9 @@ static void init_plugin(G_GNUC_UNUSED PurplePlugin *plugin)
 
 	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
 		purple_account_option_bool_new("Open chat on channel message", "open_chat", FALSE));
+
+	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
+		purple_account_option_bool_new("Retrieve unread history on open", "get_history", FALSE));
 }
 
 PURPLE_INIT_PLUGIN(slack, init_plugin, info);

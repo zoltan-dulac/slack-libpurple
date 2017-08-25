@@ -223,6 +223,12 @@ static void channels_info_cb(SlackAccount *sa, gpointer data, json_value *json, 
 		g_list_free(users);
 		g_list_free(flags);
 	}
+
+	if (purple_account_get_bool(sa->account, "get_history", FALSE)) {
+		slack_get_history(sa, &chan->object,
+				json_get_prop_strptr(json, "last_read"),
+				json_get_prop_val(json, "unread_count", integer, 0));
+	}
 }
 
 void slack_chat_open(SlackAccount *sa, SlackChannel *chan) {
