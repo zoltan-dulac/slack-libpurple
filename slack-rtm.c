@@ -44,6 +44,10 @@ static void rtm_msg(SlackAccount *sa, const char *type, json_value *json) {
 		 !strcmp(type, "team_join")) {
 		slack_user_changed(sa, json);
 	}
+	else if (!strcmp(type, "im_created")) {
+		/* not necessarily (and probably in reality never) open, but works as no-op in that case */
+		slack_im_open(sa, json);
+	}
 	else if (!strcmp(type, "channel_joined")) {
 		slack_channel_update(sa, json, SLACK_CHANNEL_MEMBER);
 	}

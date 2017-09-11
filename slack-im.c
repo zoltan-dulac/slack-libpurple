@@ -31,7 +31,7 @@ static void slack_presence_sub(SlackAccount *sa) {
 	g_string_free(ids, TRUE);
 }
 
-static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
+static gboolean im_update(SlackAccount *sa, json_value *json, const json_value *open_user) {
 	const char *sid = json_get_strptr(json);
 	if (sid)
 		json = NULL;
@@ -44,7 +44,7 @@ static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
 
 	SlackUser *user = g_hash_table_lookup(sa->ims, id);
 
-	if (!json_get_prop_boolean(json, "is_open", open)) {
+	if (!json_get_prop_boolean(json, "is_open", open_user != NULL)) {
 		if (!user)
 			return FALSE;
 		g_return_val_if_fail(*user->im, FALSE);
@@ -60,7 +60,7 @@ static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
 
 	gboolean changed = FALSE;
 
-	const char *user_id = json_get_prop_strptr(json, "user");
+	const char *user_id = json_get_prop_strptr(json, "user") ?: json_get_strptr(open_user);
 	g_return_val_if_fail(user_id, FALSE);
 
 	if (!user) {
@@ -97,12 +97,12 @@ static gboolean im_update(SlackAccount *sa, json_value *json, gboolean open) {
 }
 
 void slack_im_close(SlackAccount *sa, json_value *json) {
-	if (im_update(sa, json_get_prop(json, "channel"), FALSE))
+	if (im_update(sa, json_get_prop(json, "channel"), NULL))
 		slack_presence_sub(sa);
 }
 
 void slack_im_open(SlackAccount *sa, json_value *json) {
-	if (im_update(sa, json_get_prop(json, "channel"), TRUE))
+	if (im_update(sa, json_get_prop(json, "channel"), json_get_prop(json, "user")))
 		slack_presence_sub(sa);
 }
 
@@ -116,7 +116,7 @@ static void im_list_cb(SlackAccount *sa, gpointer data, json_value *json, const 
 
 	g_hash_table_remove_all(sa->ims);
 	for (unsigned i = 0; i < ims->u.array.length; i ++)
-		im_update(sa, ims->u.array.values[i], TRUE);
+		im_update(sa, ims->u.array.values[i], &json_value_none);
 
 	slack_presence_sub(sa);
 
@@ -154,7 +154,7 @@ static void send_im_open_cb(SlackAccount *sa, gpointer data, json_value *json, c
 
 	json = json_get_prop_type(json, "channel", object);
 	if (json)
-		im_update(sa, json, TRUE);
+		im_update(sa, json, &json_value_none);
 
 	if (error || !*send->user->im) {
 		purple_conv_present_error(send->user->name, sa->account, error ?: "failed to open IM channel");

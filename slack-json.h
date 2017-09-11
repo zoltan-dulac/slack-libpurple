@@ -5,7 +5,7 @@
 #include <json.h>
 
 #define json_get_selector(JSON, TYPE, SELECTOR, DEFAULT) ({ \
-		json_value *_val = (JSON); \
+		__typeof__(JSON) _val = (JSON); \
 		_val && _val->type == json_##TYPE ? SELECTOR : DEFAULT; \
 	})
 #define json_get_type(JSON, TYPE) \
