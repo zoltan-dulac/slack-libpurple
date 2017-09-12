@@ -90,7 +90,7 @@ PurpleChat *slack_find_blist_chat(PurpleAccount *account, const char *name) {
 		if (chan && chan->buddy)
 			return chan->buddy;
 	}
-	return purple_blist_find_chat(account, name);
+	return NULL;
 }
 
 static void get_history_cb(PurpleBlistNode *buddy, PurpleRequestFields *fields) {
