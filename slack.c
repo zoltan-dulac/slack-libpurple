@@ -68,10 +68,10 @@ static GList *slack_chat_info(PurpleConnection *gc) {
 
 GHashTable *slack_chat_info_defaults(PurpleConnection *gc, const char *name) {
 	/* While the docs say to use NULL key_destructor, libpurple actually uses g_free when loading buddies, so matching that here instead */
-	GHashTable *info = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+	GHashTable *info = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
 
 	if (name)
-		g_hash_table_insert(info, g_strdup("name"), g_strdup(name));
+		g_hash_table_insert(info, "name", g_strdup(name));
 	/* we could look up the channel here and add more... */
 
 	return info;

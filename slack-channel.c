@@ -104,18 +104,19 @@ static SlackChannel *channel_update(SlackAccount *sa, json_value *json, SlackCha
 		chan->name = g_strdup(name);
 		g_hash_table_insert(sa->channel_names, chan->name, chan);
 		if (chan->buddy)
-			g_hash_table_insert(chan->buddy->components, g_strdup("name"), g_strdup(chan->name));
+			g_hash_table_insert(chan->buddy->components, "name", g_strdup(chan->name));
 	}
 
 	if (!chan->buddy && chan->type >= SLACK_CHANNEL_MEMBER) {
 		chan->buddy = g_hash_table_lookup(sa->buddies, sid);
 		if (chan->buddy && PURPLE_BLIST_NODE_IS_CHAT(PURPLE_BLIST_NODE(chan->buddy))) {
-			if (chan->name)
-				g_hash_table_insert(chan->buddy->components, g_strdup("name"), g_strdup(chan->name));
+			/* While the docs say to use NULL key_destructor, libpurple actually uses g_free when loading buddies, so we recreate components here */
+			if (chan->buddy->components)
+				g_hash_table_destroy(chan->buddy->components);
+			chan->buddy->components = slack_chat_info_defaults(sa->gc, chan->name);
 		} else {
-			GHashTable *info = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
-			g_hash_table_insert(info, "name", g_strdup(chan->name));
-			chan->buddy = purple_chat_new(sa->account, chan->name, info);
+			chan->buddy = purple_chat_new(sa->account, chan->name,
+					slack_chat_info_defaults(sa->gc, chan->name));
 			slack_blist_cache(sa, &chan->buddy->node, sid);
 			purple_blist_add_chat(chan->buddy, sa->blist, NULL);
 		}
