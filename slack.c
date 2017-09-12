@@ -78,7 +78,7 @@ GHashTable *slack_chat_info_defaults(PurpleConnection *gc, const char *name) {
 }
 
 static char *slack_get_chat_name(GHashTable *info) {
-	return g_hash_table_lookup(info, "name");
+	return g_strdup(g_hash_table_lookup(info, "name"));
 }
 
 static void slack_login(PurpleAccount *account) {
