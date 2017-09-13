@@ -22,8 +22,8 @@ CC = gcc
 LD = $(CC)
 
 PURPLE_MOD=purple
-PLUGIN_DIR_PURPLE:=$(shell pkg-config --variable=plugindir $(PURPLE_MOD))
-DATA_ROOT_DIR_PURPLE:=$(shell pkg-config --variable=datarootdir $(PURPLE_MOD))
+PLUGIN_DIR_PURPLE:=$(DESTDIR)$(shell pkg-config --variable=plugindir $(PURPLE_MOD))
+DATA_ROOT_DIR_PURPLE:=$(DESTDIR)$(shell pkg-config --variable=datarootdir $(PURPLE_MOD))
 PKGS=$(PURPLE_MOD) json-parser
 
 CFLAGS = \
