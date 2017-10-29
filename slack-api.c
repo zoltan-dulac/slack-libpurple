@@ -72,8 +72,8 @@ void slack_api_call(SlackAccount *sa, SlackAPICallback callback, gpointer user_d
 	va_end(qargs);
 
 	purple_debug_misc("slack", "api call: %s\n", url->str);
-	call->fetch = purple_util_fetch_url_request_data_len_with_account(sa->account,
-			url->str, TRUE, NULL, TRUE, NULL, 0, FALSE, 4096*1024,
+	call->fetch = purple_util_fetch_url_request_len_with_account(sa->account,
+			url->str, TRUE, NULL, TRUE, NULL, FALSE, 4096*1024,
 			api_cb, call);
 	g_string_free(url, TRUE);
 }
