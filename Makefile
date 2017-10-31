@@ -51,9 +51,9 @@ $(LIBNAME): $(C_OBJS)
 install: $(LIBNAME)
 	install -d $(PLUGIN_DIR_PURPLE) $(DATA_ROOT_DIR_PURPLE)/pixmaps/pidgin/protocols/{16,22,48}
 	install $(LIBNAME) $(PLUGIN_DIR_PURPLE)/$(LIBNAME)
-	install --mode=0644 img/slack16.png $(DATA_ROOT_DIR_PURPLE)/pixmaps/pidgin/protocols/16/slack.png
-	install --mode=0644 img/slack22.png $(DATA_ROOT_DIR_PURPLE)/pixmaps/pidgin/protocols/22/slack.png
-	install --mode=0644 img/slack48.png $(DATA_ROOT_DIR_PURPLE)/pixmaps/pidgin/protocols/48/slack.png
+	install -m 0644 img/slack16.png $(DATA_ROOT_DIR_PURPLE)/pixmaps/pidgin/protocols/16/slack.png
+	install -m 0644 img/slack22.png $(DATA_ROOT_DIR_PURPLE)/pixmaps/pidgin/protocols/22/slack.png
+	install -m 0644 img/slack48.png $(DATA_ROOT_DIR_PURPLE)/pixmaps/pidgin/protocols/48/slack.png
 
 install-user: $(LIBNAME)
 	install -d $(HOME)/.purple/plugins
