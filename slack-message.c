@@ -39,7 +39,7 @@ gchar *slack_html_to_message(SlackAccount *sa, const char *s, PurpleMessageFlags
 	return g_string_free(msg, FALSE);
 }
 
-static gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subtype, PurpleMessageFlags *flags) {
+gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subtype, PurpleMessageFlags *flags) {
 	g_return_val_if_fail(s, NULL);
 
 	size_t l = strlen(s);
