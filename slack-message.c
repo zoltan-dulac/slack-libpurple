@@ -131,7 +131,8 @@ gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subtype, Pu
 static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json, PurpleMessageFlags flags) {
 	const char *user_id    = json_get_prop_strptr(json, "user");
 	const char *subtype    = json_get_prop_strptr(json, "subtype");
-	time_t mt = slack_parse_time(json_get_prop(json, "ts"));
+	json_value *ts         = json_get_prop(json, "ts");
+	time_t mt = slack_parse_time(ts);
 
 	if (json_get_prop_boolean(json, "hidden", FALSE))
 		flags |= PURPLE_MESSAGE_INVISIBLE;
@@ -146,6 +147,7 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 
 	char *html = slack_message_to_html(sa, json_get_prop_strptr(json, "text"), subtype, &flags);
 
+	PurpleConversation *conv = NULL;
 	if (SLACK_IS_CHANNEL(obj)) {
 		SlackChannel *chan = (SlackChannel*)obj;
 		/* Channel */
@@ -158,21 +160,23 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 		if (!user)
 			user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
 
-		PurpleConvChat *conv;
-		if (subtype && (conv = slack_channel_get_conversation(sa, chan))) {
-			if (!strcmp(subtype, "channel_topic") ||
+		PurpleConvChat *chat = slack_channel_get_conversation(sa, chan);
+		if (chat) {
+			conv = purple_conv_chat_get_conversation(chat);
+			if (!subtype);
+			else if (!strcmp(subtype, "channel_topic") ||
 					!strcmp(subtype, "group_topic"))
-				purple_conv_chat_set_topic(conv, user ? user->name : user_id, json_get_prop_strptr(json, "topic"));
+				purple_conv_chat_set_topic(chat, user ? user->name : user_id, json_get_prop_strptr(json, "topic"));
 		}
 
 		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, html, mt);
 	} else if (SLACK_IS_USER(obj)) {
 		SlackUser *im = (SlackUser*)obj;
 		/* IM */
+		conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, im->name, sa->account);
 		if (slack_object_id_is(im->object.id, user_id))
 			serv_got_im(sa->gc, im->name, html, flags, mt);
 		else {
-			PurpleConversation *conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, im->name, sa->account);
 			if (!conv)
 				conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, sa->account, im->name);
 			if (!user)
@@ -180,6 +184,12 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 				user = (SlackUser*)slack_object_hash_table_lookup(sa->users, user_id);
 			purple_conversation_write(conv, user ? user->name : user_id, html, flags, mt);
 		}
+	}
+
+	/* update most recent ts for later marking */
+	if (conv && json_get_strptr(ts)) {
+		g_free(purple_conversation_get_data(conv, "slack:ts"));
+		purple_conversation_set_data(conv, "slack:ts", g_strdup(json_get_strptr(ts)));
 	}
 }
 
@@ -249,37 +259,40 @@ static void get_history_cb(SlackAccount *sa, gpointer data, json_value *json, co
 }
 
 void slack_get_history(SlackAccount *sa, SlackObject *obj, const char *since, unsigned count) {
-	const char *call = NULL, *id = NULL;
 	if (SLACK_IS_CHANNEL(obj)) {
 		SlackChannel *chan = (SlackChannel*)obj;
 		if (!chan->cid)
 			slack_chat_open(sa, chan);
-		switch (chan->type) {
-			case SLACK_CHANNEL_MEMBER:
-				call = "channels.history";
-				break;
-			case SLACK_CHANNEL_GROUP:
-				call = "groups.history";
-				break;
-			case SLACK_CHANNEL_MPIM:
-				call = "mpim.history";
-				break;
-			default:
-				break;
-		}
-		id = chan->object.id;
-	} else if (SLACK_IS_USER(obj)) {
-		SlackUser *user = (SlackUser*)obj;
-		if (*user->im) {
-			call = "im.history";
-			id = user->im;
-		}
 	}
-
-	if (!call)
-		return;
 
 	char count_buf[6] = "";
 	snprintf(count_buf, 5, "%u", count);
-	slack_api_call(sa, get_history_cb, g_object_ref(obj), call, "channel", id, "oldest", since ?: "0", "count", count_buf, NULL);
+	slack_api_channel_call(sa, get_history_cb, g_object_ref(obj), obj, "history", "oldest", since ?: "0", "count", count_buf, NULL);
+}
+
+void slack_mark_conversation(SlackAccount *sa, PurpleConversation *conv) {
+	int c = GPOINTER_TO_INT(purple_conversation_get_data(conv, "unseen-count"));
+	if (c != 0)
+		/* we could update read count to farther back, but best to only move it forward to latest */
+		return;
+
+	char *ts = purple_conversation_get_data(conv, "slack:ts");
+	if (!ts)
+		return;
+	/* we don't need ts anymore */
+	purple_conversation_set_data(conv, "slack:ts", NULL);
+
+	SlackObject *obj = NULL;
+	switch (conv->type) {
+		case PURPLE_CONV_TYPE_IM:
+			obj = g_hash_table_lookup(sa->user_names, purple_conversation_get_name(conv));
+			break;
+		case PURPLE_CONV_TYPE_CHAT:
+			obj = g_hash_table_lookup(sa->channel_cids, GUINT_TO_POINTER(purple_conv_chat_get_id(PURPLE_CONV_CHAT(conv))));
+			break;
+		default:
+			break;
+	}
+	slack_api_channel_call(sa, NULL, NULL, obj, "mark", "ts", ts, NULL);
+	g_free(ts);
 }

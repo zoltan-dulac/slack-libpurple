@@ -80,8 +80,37 @@ static char *slack_get_chat_name(GHashTable *info) {
 	return g_strdup(g_hash_table_lookup(info, "name"));
 }
 
+static void slack_conversation_updated(PurpleConversation *conv, PurpleConvUpdateType type, void *data) {
+	/* TODO: channel TYPING? */
+	if (type != PURPLE_CONV_UPDATE_UNSEEN)
+		return;
+	if (conv->type != PURPLE_CONV_TYPE_IM && conv->type != PURPLE_CONV_TYPE_CHAT)
+		return;
+	SlackAccount *sa = get_slack_account(conv->account);
+	if (!sa)
+		return;
+
+	slack_mark_conversation(sa, conv);
+}
+
+static void slack_conversation_deleted(PurpleConversation *conv, void *data) {
+	SlackAccount *sa = get_slack_account(conv->account);
+	if (!sa)
+		return;
+	g_free(purple_conversation_get_data(conv, "slack:ts"));
+}
+
 static void slack_login(PurpleAccount *account) {
 	PurpleConnection *gc = purple_account_get_connection(account);
+
+	static gboolean signals_connected = FALSE;
+	if (!signals_connected) {
+		signals_connected = TRUE;
+		purple_signal_connect(purple_conversations_get_handle(), "conversation-updated",
+				gc->prpl, PURPLE_CALLBACK(slack_conversation_updated), NULL);
+		purple_signal_connect(purple_conversations_get_handle(), "deleting-conversation",
+				gc->prpl, PURPLE_CALLBACK(slack_conversation_deleted), NULL);
+	}
 
 	const gchar *token = purple_account_get_string(account, "api_token", NULL);
 	if (!token || !*token)
@@ -241,34 +270,34 @@ static PurplePluginProtocolInfo prpl_info = {
 };
 
 static PurplePluginInfo info = {
-    PURPLE_PLUGIN_MAGIC,
-    PURPLE_MAJOR_VERSION,
-    PURPLE_MINOR_VERSION,
-    PURPLE_PLUGIN_PROTOCOL,
-    NULL,
-    0,
-    NULL,
-    PURPLE_PRIORITY_DEFAULT,
-    SLACK_PLUGIN_ID,
-    "Slack",
-    "0.1",
-    "Slack protocol plugin",
-    "Slack protocol support for libpurple.",
-    "Dylan Simon <dylan@dylex.net>, Valeriy Golenkov <valery.golenkov@gmail.com>",                          
-    "http://github.com/dylex/slack-libpurple",     
-    NULL,                   
-    NULL,                          
-    NULL,                          
-    NULL,                          
-    &prpl_info,	/* extra info */ 
-    NULL,                        
-    NULL,                   
-    NULL,                          
-    NULL,                          
-    NULL,                          
-    NULL                           
-};                               
-    
+	PURPLE_PLUGIN_MAGIC,
+	PURPLE_MAJOR_VERSION,
+	PURPLE_MINOR_VERSION,
+	PURPLE_PLUGIN_PROTOCOL,
+	NULL,
+	0,
+	NULL,
+	PURPLE_PRIORITY_DEFAULT,
+	SLACK_PLUGIN_ID,
+	"Slack",
+	"0.1",
+	"Slack protocol plugin",
+	"Slack protocol support for libpurple.",
+	"Dylan Simon <dylan@dylex.net>, Valeriy Golenkov <valery.golenkov@gmail.com>",
+	"http://github.com/dylex/slack-libpurple",
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	&prpl_info,	/* extra info */
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL
+};
+
 static void init_plugin(G_GNUC_UNUSED PurplePlugin *plugin)
 {
 	prpl_info.user_splits = g_list_append(prpl_info.user_splits,

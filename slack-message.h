@@ -8,6 +8,7 @@
 gchar *slack_html_to_message(SlackAccount *sa, const char *s, PurpleMessageFlags flags);
 gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subtype, PurpleMessageFlags *flags);
 void slack_get_history(SlackAccount *sa, SlackObject *obj, const char *since, unsigned count);
+void slack_mark_conversation(SlackAccount *sa, PurpleConversation *conv);
 
 /* RTM event handlers */
 void slack_message(SlackAccount *sa, json_value *json);
