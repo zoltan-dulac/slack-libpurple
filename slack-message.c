@@ -16,6 +16,36 @@ gchar *slack_html_to_message(SlackAccount *sa, const char *s, PurpleMessageFlags
 	while (*s) {
 		const char *ent;
 		int len;
+		if (*s == '@' || *s == '#') {
+			const char *e = s+1;
+			/* try to find the end of this command, but not very well -- not sure what characters are valid and eventually will need to deal with spaces */
+			while (g_ascii_isalnum(*e) || *e == '-' || *e == '_' || (*e == '.' && g_ascii_isalnum(e[1]))) e++;
+			if (*s == '@') {
+#define COMMAND(CMD, CMDL) \
+				if (e-(s+1) == CMDL && !strncmp(s+1, CMD, CMDL)) { \
+					g_string_append_len(msg, "<!" CMD ">", CMDL+3); \
+					s = e; \
+					continue; \
+				}
+				COMMAND("here", 4)
+				COMMAND("channel", 7)
+				COMMAND("everyone", 8)
+			}
+#undef COMMAND
+			char *t = g_strndup(s+1, e-(s+1));
+			SlackObject *obj = g_hash_table_lookup(*s == '@' ? sa->user_names : sa->channel_names, t);
+			g_free(t);
+			if (obj) {
+				g_string_append_c(msg, '<');
+				g_string_append_c(msg, *s);
+				g_string_append(msg, obj->id);
+				g_string_append_c(msg, '|');
+				g_string_append_len(msg, s+1, e-(s+1));
+				g_string_append_c(msg, '>');
+				s = e;
+				continue;
+			}
+		}
 		if ((ent = purple_markup_unescape_entity(s, &len))) {
 			if (!strcmp(ent, "&"))
 				g_string_append(msg, "&amp;");
@@ -26,14 +56,15 @@ gchar *slack_html_to_message(SlackAccount *sa, const char *s, PurpleMessageFlags
 			else
 				g_string_append(msg, ent);
 			s += len;
+			continue;
 		}
-		else if (!g_ascii_strncasecmp(s, "<br>", 4)) {
+		if (!g_ascii_strncasecmp(s, "<br>", 4)) {
 			g_string_append_c(msg, '\n');
 			s += 4;
-		} else {
-			/* what about other tags? user/channel refs? urls? dates? */
-			g_string_append_c(msg, *s++);
+			continue;
 		}
+		/* what about other tags? urls (auto-detected server-side)? dates? */
+		g_string_append_c(msg, *s++);
 	}
 
 	return g_string_free(msg, FALSE);
