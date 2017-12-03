@@ -16,7 +16,7 @@ gchar *slack_html_to_message(SlackAccount *sa, const char *s, PurpleMessageFlags
 	while (*s) {
 		const char *ent;
 		int len;
-		if (*s == '@' || *s == '#') {
+		if ((*s == '@' || *s == '#') && !(flags & PURPLE_MESSAGE_NO_LINKIFY)) {
 			const char *e = s+1;
 			/* try to find the end of this command, but not very well -- not sure what characters are valid and eventually will need to deal with spaces */
 			while (g_ascii_isalnum(*e) || *e == '-' || *e == '_' || (*e == '.' && g_ascii_isalnum(e[1]))) e++;
@@ -301,6 +301,17 @@ void slack_get_history(SlackAccount *sa, SlackObject *obj, const char *since, un
 	slack_api_channel_call(sa, get_history_cb, g_object_ref(obj), obj, "history", "oldest", since ?: "0", "count", count_buf, NULL);
 }
 
+SlackObject *slack_conversation_get_channel(SlackAccount *sa, PurpleConversation *conv) {
+	switch (conv->type) {
+		case PURPLE_CONV_TYPE_IM:
+			return g_hash_table_lookup(sa->user_names, purple_conversation_get_name(conv));
+		case PURPLE_CONV_TYPE_CHAT:
+			return g_hash_table_lookup(sa->channel_cids, GUINT_TO_POINTER(purple_conv_chat_get_id(PURPLE_CONV_CHAT(conv))));
+		default:
+			return NULL;
+	}
+}
+
 void slack_mark_conversation(SlackAccount *sa, PurpleConversation *conv) {
 	int c = GPOINTER_TO_INT(purple_conversation_get_data(conv, "unseen-count"));
 	if (c != 0)
@@ -313,17 +324,7 @@ void slack_mark_conversation(SlackAccount *sa, PurpleConversation *conv) {
 	/* we don't need ts anymore */
 	purple_conversation_set_data(conv, "slack:ts", NULL);
 
-	SlackObject *obj = NULL;
-	switch (conv->type) {
-		case PURPLE_CONV_TYPE_IM:
-			obj = g_hash_table_lookup(sa->user_names, purple_conversation_get_name(conv));
-			break;
-		case PURPLE_CONV_TYPE_CHAT:
-			obj = g_hash_table_lookup(sa->channel_cids, GUINT_TO_POINTER(purple_conv_chat_get_id(PURPLE_CONV_CHAT(conv))));
-			break;
-		default:
-			break;
-	}
+	SlackObject *obj = slack_conversation_get_channel(sa, conv);
 	slack_api_channel_call(sa, NULL, NULL, obj, "mark", "ts", ts, NULL);
 	g_free(ts);
 }

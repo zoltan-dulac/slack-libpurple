@@ -17,6 +17,7 @@
 #include "slack-channel.h"
 #include "slack-blist.h"
 #include "slack-message.h"
+#include "slack-cmd.h"
 
 static const char *slack_list_icon(G_GNUC_UNUSED PurpleAccount * account, G_GNUC_UNUSED PurpleBuddy * buddy) {
 	return "slack";
@@ -311,6 +312,8 @@ static void init_plugin(G_GNUC_UNUSED PurplePlugin *plugin)
 
 	prpl_info.protocol_options = g_list_append(prpl_info.protocol_options,
 		purple_account_option_bool_new("Retrieve unread history on open", "get_history", FALSE));
+
+	slack_cmd_register();
 }
 
 PURPLE_INIT_PLUGIN(slack, init_plugin, info);

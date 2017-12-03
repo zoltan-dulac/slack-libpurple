@@ -4,6 +4,7 @@ LIBNAME = libslack.so
 all: $(LIBNAME)
 
 C_SRCS = slack.c \
+	 slack-cmd.c \
 	 slack-message.c \
 	 slack-channel.c \
 	 slack-im.c \
