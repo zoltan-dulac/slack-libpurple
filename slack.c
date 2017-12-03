@@ -194,7 +194,9 @@ static void slack_close(PurpleConnection *gc) {
 
 static PurplePluginProtocolInfo prpl_info = {
 	/* options */
-	OPT_PROTO_CHAT_TOPIC | OPT_PROTO_NO_PASSWORD | OPT_PROTO_SLASH_COMMANDS_NATIVE,
+	OPT_PROTO_CHAT_TOPIC
+		| OPT_PROTO_NO_PASSWORD
+		/* TODO, requires redirecting / commands to hidden API: | OPT_PROTO_SLASH_COMMANDS_NATIVE */,
 	NULL,			/* user_splits */
 	NULL,			/* protocol_options */
 	NO_BUDDY_ICONS,
