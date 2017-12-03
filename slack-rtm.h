@@ -1,8 +1,7 @@
 #ifndef _PURPLE_SLACK_RTM_H
 #define _PURPLE_SLACK_RTM_H
 
-#include <json.h>
-
+#include "json.h"
 #include "slack.h"
 
 typedef struct _SlackRTMCall SlackRTMCall;

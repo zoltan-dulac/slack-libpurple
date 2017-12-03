@@ -2,7 +2,7 @@
 #define _PURPLE_SLACK_JSON_H
 
 #include <glib.h>
-#include <json.h>
+#include "json.h"
 
 #define json_get_selector(JSON, TYPE, SELECTOR, DEFAULT) ({ \
 		__typeof__(JSON) _val = (JSON); \

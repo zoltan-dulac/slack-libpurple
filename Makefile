@@ -14,7 +14,8 @@ C_SRCS = slack.c \
 	 slack-api.c \
 	 slack-object.c \
 	 slack-json.c \
-	 purple-websocket.c
+	 purple-websocket.c \
+	 json.c
 
 # Object file names using 'Substitution Reference'
 C_OBJS = $(C_SRCS:.c=.o)
@@ -25,12 +26,13 @@ LD = $(CC)
 PURPLE_MOD=purple
 PLUGIN_DIR_PURPLE:=$(DESTDIR)$(shell pkg-config --variable=plugindir $(PURPLE_MOD))
 DATA_ROOT_DIR_PURPLE:=$(DESTDIR)$(shell pkg-config --variable=datarootdir $(PURPLE_MOD))
-PKGS=$(PURPLE_MOD) glib-2.0 gobject-2.0 json-parser
+PKGS=$(PURPLE_MOD) glib-2.0 gobject-2.0
 
 CFLAGS = \
     -g \
     -O2 \
     -Wall -Werror \
+    -Wno-error=strict-aliasing \
     -fPIC \
     -D_DEFAULT_SOURCE=1 \
     -std=c99 \
@@ -39,6 +41,9 @@ CFLAGS = \
 LIBS = $(shell pkg-config --libs $(PKGS))
 
 LDFLAGS = -shared
+
+json.%: json-parser/json.%
+	cp $< $@
 
 %.o: %.c
 	$(CC) -c $(CFLAGS) -o $@ $<

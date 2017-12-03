@@ -1,8 +1,7 @@
 #ifndef _PURPLE_SLACK_MESSAGE_H
 #define _PURPLE_SLACK_MESSAGE_H
 
-#include <json.h>
-
+#include "json.h"
 #include "slack.h"
 #include "slack-object.h"
 

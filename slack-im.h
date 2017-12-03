@@ -1,8 +1,7 @@
 #ifndef _PURPLE_SLACK_IM_H
 #define _PURPLE_SLACK_IM_H
 
-#include <json.h>
-
+#include "json.h"
 #include "slack.h"
 
 /* Initialization */

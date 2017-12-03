@@ -11,10 +11,9 @@ Here's how slack concepts are mapped to purple:
 ## Installation/Configuration
 
 1. Install libpurple (pidgin, finch, etc.), obviously
-1. Install [json-parser](https://github.com/udp/json-parser) on your system
 1. Run `make install` (or `make user-install`)
 1. [Issue a Slack API token](https://api.slack.com/custom-integrations/legacy-tokens) for yourself
-1. Create a slack account and enter this token (no password, hostname is optional)
+1. Create a slack account and enter this token under (Advanced) API token (no password, hostname is optional)
 
 ## Status
 
