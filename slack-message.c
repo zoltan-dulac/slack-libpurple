@@ -95,7 +95,7 @@ gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subtype, Pu
 		}
 
 		/* found a <tag> */
-		char *r = strchr(s, '>');
+		char *r = memchr(s, '>', end-s);
 		if (!r)
 			/* should really be error */
 			r = end;
@@ -183,8 +183,10 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 		SlackChannel *chan = (SlackChannel*)obj;
 		/* Channel */
 		if (!chan->cid) {
-			if (!purple_account_get_bool(sa->account, "open_chat", FALSE))
+			if (!purple_account_get_bool(sa->account, "open_chat", FALSE)) {
+				g_free(html);
 				return;
+			}
 			slack_chat_open(sa, chan);
 		}
 
@@ -216,6 +218,8 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 			purple_conversation_write(conv, user ? user->name : user_id, html, flags, mt);
 		}
 	}
+
+	g_free(html);
 
 	/* update most recent ts for later marking */
 	if (conv && json_get_strptr(ts)) {
