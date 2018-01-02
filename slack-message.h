@@ -6,6 +6,7 @@
 #include "slack-object.h"
 
 gchar *slack_html_to_message(SlackAccount *sa, const char *s, PurpleMessageFlags flags);
+void add_slack_attachments_to_buffer(GString *buffer, SlackAccount *sa, json_value *attachments, PurpleMessageFlags *flags);
 gchar *slack_json_to_html(SlackAccount *sa, json_value *json, const char *subtype, PurpleMessageFlags *flags);
 gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subtype, PurpleMessageFlags *flags);
 gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, PurpleMessageFlags *flags);

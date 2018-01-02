@@ -9,7 +9,7 @@
 #include "slack-message.h"
 
 gchar *slack_html_to_message(SlackAccount *sa, const char *s, PurpleMessageFlags flags) {
-	purple_debug_info("slack", "slack_html_to_message() with: %s\n", s); 
+	
 	if (flags & PURPLE_MESSAGE_RAW)
 		return g_strdup(s);
 
@@ -77,8 +77,6 @@ gchar *slack_message_to_html(SlackAccount *sa, gchar *s, const char *subtype, Pu
 	size_t l = strlen(s);
 	char *end = &s[l];
 	GString *html = g_string_sized_new(l);
-
-	purple_debug_info("slack", "Entered slack_message_to_html() with: %s\n", s); 
 
 	if (!g_strcmp0(subtype, "me_message")) {
 		g_string_append(html, "/me ");
@@ -175,10 +173,7 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 	json_value *ts          = json_get_prop(json, "ts");
 	time_t mt = slack_parse_time(ts);
 
-	purple_debug_info("slack", "Entered handle_message with message subtype: %s\n",  subtype);
-
 	if (isHidden) {
-		purple_debug_info("slack", "This is a hidden message\n");
 		flags |= PURPLE_MESSAGE_INVISIBLE;
 	}
 
@@ -186,8 +181,6 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 	if (slack_object_id_is(sa->self->object.id, user_id)) {
 		user = sa->self;
 #if PURPLE_VERSION_CHECK(2,12,0)
-
-		purple_debug_info("slack", "Doing a remote send\n",  subtype);
 		flags |= PURPLE_MESSAGE_REMOTE_SEND;
 #endif
 	}
@@ -196,7 +189,6 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 	
 	PurpleConversation *conv = NULL;
 	if (SLACK_IS_CHANNEL(obj)) {
-		purple_debug_info("slack", "This is a channel message!\n");
 		SlackChannel *chan = (SlackChannel*)obj;
 		/* Channel */
 		if (!chan->cid) {
@@ -219,10 +211,8 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 				purple_conv_chat_set_topic(chat, user ? user->name : user_id, json_get_prop_strptr(json, "topic"));
 		}
 		
-		purple_debug_info("slack", "This is the html: %s\n", html);
 		serv_got_chat_in(sa->gc, chan->cid, user ? user->name : user_id ?: "", flags, html, mt);
 	} else if (SLACK_IS_USER(obj)) {
-		purple_debug_info("slack", "This is a user message!\n");
 		SlackUser *im = (SlackUser*)obj;
 		/* IM */
 		conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, im->name, sa->account);
@@ -247,6 +237,22 @@ static void handle_message(SlackAccount *sa, SlackObject *obj, json_value *json,
 	}
 }
 
+void add_slack_attachments_to_buffer(GString *buffer, SlackAccount *sa, json_value *attachments, PurpleMessageFlags *flags) {
+	if (attachments) {
+
+		int length = (attachments != NULL) ? attachments->u.array.length : 0;
+
+		for (int i=0; i < length; i++) {
+			json_value *attachment = attachments->u.array.values[i];
+
+			g_string_append_printf(
+				buffer,
+				"%s",
+				slack_attachment_to_html(sa, attachment, flags)
+			);
+		}
+	}
+}
 
 gchar *slack_json_to_html(SlackAccount *sa, json_value *json, const char *subtype, PurpleMessageFlags *flags) {
 	GString *html = g_string_sized_new(0);
@@ -259,40 +265,10 @@ gchar *slack_json_to_html(SlackAccount *sa, json_value *json, const char *subtyp
 	g_string_printf(html, "");
 
 	// If there are attachements, show them.
-	if (attachments) {
-
-		int length = (attachments != NULL) ? attachments->u.array.length : 0;
-		purple_debug_info("slack", "attachment length is %d (%d) \n", length, (attachments == NULL));
-
-		for (int i=0; i<attachments->u.array.length; i++) {
-			json_value *attachment = attachments->u.array.values[i];
-
-			g_string_append_printf(
-				html,
-				"%s",
-				slack_attachment_to_html(sa, attachment, flags)
-			);
-		}
-	// if this is a "message_changed" subtype, show how the message was changed.
-	}
+	add_slack_attachments_to_buffer(html, sa, attachments, flags);
+	add_slack_attachments_to_buffer(html, sa, message_attachments, flags);
 	
-	if (message_attachments) {
-
-		int length = (message_attachments != NULL) ? message_attachments->u.array.length : 0;
-		purple_debug_info("slack", "attachment length is %d (%d) \n", length, (message_attachments == NULL));
-
-		for (int i=0; i<message_attachments->u.array.length; i++) {
-			json_value *attachment = message_attachments->u.array.values[i];
-
-			g_string_append_printf(
-				html,
-				"%s",
-				slack_attachment_to_html(sa, attachment, flags)
-			);
-		}
 	// if this is a "message_changed" subtype, show how the message was changed.
-	}
-	
 	if (subtype && g_strcmp0(subtype, "message_changed") == 0) {
 		json_value *message = json_get_prop(json, "message");
 		s = json_get_prop_strptr(message, "text");
@@ -324,11 +300,12 @@ gchar *slack_json_to_html(SlackAccount *sa, json_value *json, const char *subtyp
 	return g_string_free(html, FALSE);
 }
 
+/*
+ *	Changes a "slack color" (i.e. "good", "warning", "danger") to the correct
+ *  RGB color.  From https://api.slack.com/docs/message-attachments
+ */
 gchar *get_color(char *c) {
-	debug("color is");
-	debug(c);
 	if (c == NULL) {
-		debug ("is this NULL?");
 		return (gchar * ) "#717274";
 	} else if (!strcmp(c, "good")) {
 		return (gchar * ) "#2fa44f";
@@ -395,23 +372,8 @@ gchar *link(char *url, char *text, int insertBR) {
 }
 
 /*
- * 
- * Note that the attachment JSON object is an array of the following shape:
- * 
- * "attachments": [
- *	{
- *		"service_name": "Mozilla Developer Network",
- *		"service_url": "https:\/\/developer.mozilla.org\/en-US\/docs\/Web\/HTML\/Element\/mark",
- *		"text": "The HTML mark element represents highlighted text, i.e., a run of text marked for reference purpose, due to its relevance in a particular context.",
- *		"fallback": "Mozilla Developer Network: ",
- *		"thumb_url": "https:\/\/cdn.mdn.mozilla.net\/static\/img\/opengraph-logo.72382e605ce3.png",
- *		"from_url": "https:\/\/developer.mozilla.org\/en-US\/docs\/Web\/HTML\/Element\/mark",
- *		"thumb_width": 600,
- *		"thumb_height": 600,
- *		"service_icon": "https:\/\/cdn.mdn.mozilla.net\/static\/img\/favicon144.e7e21ca263ca.png",
- *		"id": 1
- *	}
- * ],
+ * Converts a single attachment to HTML.  The shape of an attachment is
+ * documented at https://api.slack.com/docs/message-attachments
  */
 gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, PurpleMessageFlags *flags) {
 	GString *html = g_string_sized_new(0);
@@ -438,17 +400,25 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 	time_t ts = slack_parse_time(json_get_prop(attachment, "ts"));
 
 	GString *border = g_string_sized_new(0);
-	// GString *truncated_text = g_string_sized_new(0);
 	
 	g_string_printf(border, "</b><font color=\"%s\">————————————</font>", color);
-	/* g_string_printf(
+
+	// Sometimes, the text of the attachment can be *really* large.  The official
+	// Slack client will truncate the text at x-characters and have a "Read More"
+	// link so the user can read the rest of the text.  I wasn't sure what the
+	// right thing to do for the plugin, so I implemented both the truncated
+	// version as well as the "just dump all the text naively" version (the
+	// latter of which is what is uncommented .. I am leaving the truncated
+	// version commented in in case it is decided that this is the right thing to
+	// do.
+
+	/* GString *truncated_text = g_string_sized_new(0);
+	g_string_printf(
 		truncated_text,
 		"%.480s%s",
 		(char *) formatted_text,
 		(strlen(formatted_text) > 480) ? "…" : ""
 	); */
-
-
 
 	g_string_printf(
 		html,
@@ -519,8 +489,6 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 		(ts != (time_t) (0))  ? ctime(&ts) : ""
 		
 	);
-
-	debug(html->str);
 
 	// Free up the GStrings that we don't need anymore.
 	g_string_free(border, TRUE);
