@@ -437,14 +437,14 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 
 	g_string_printf(
 		html,
-		"<br /><font color=\"#717274\">"
+		"<br /><font face=\"Consolas, Courier New, Courier, monospace\" color=\"#717274\">"
 
 			// pretext
 			"%s"
 			"%s"
 
 			// top border
-			"<br />%s"
+			"%s%s"
 			"<br />"
 
 			// service name and author name
@@ -475,6 +475,7 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 		pretext ? "<br /><br />" : "",
 
 		// top border
+		!pretext ? "<br />" : "",
 		border->str,
 
 		// service name and author name
