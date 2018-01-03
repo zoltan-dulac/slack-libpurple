@@ -437,7 +437,7 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 
 	g_string_printf(
 		html,
-		"<br /><font color=\"#717274\">"
+		"<br /><font color=\"#717274\"><tt>"
 
 			// pretext
 			"%s"
@@ -468,7 +468,7 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 			// footer
 			"%s%s%s"
 
-		"</font>",
+		"</tt></font>",
 
 		// pretext
 		pretext ? slack_message_to_html(sa, pretext, "attachment", flags) : "",
