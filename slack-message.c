@@ -268,22 +268,37 @@ gchar *slack_json_to_html(SlackAccount *sa, json_value *json, const char *subtyp
 	add_slack_attachments_to_buffer(html, sa, attachments, flags);
 	add_slack_attachments_to_buffer(html, sa, message_attachments, flags);
 	
-	// if this is a "message_changed" subtype, show how the message was changed.
-	if (subtype && g_strcmp0(subtype, "message_changed") == 0) {
-		json_value *message = json_get_prop(json, "message");
-		s = json_get_prop_strptr(message, "text");
+	// Check to see if the message is a special subtype.
+	if (subtype) {
+		// If the message was editted, we show how the message was changed.
+		// We do this by displayed the changed message and what it was originally,
+		// since we can't do what the official slack plugin does and rewrite history.
+		if (g_strcmp0(subtype, "message_changed") == 0) {
+			json_value *message = json_get_prop(json, "message");
+			s = json_get_prop_strptr(message, "text");
 
-		json_value *previous_message = json_get_prop(json, "previous_message");
-		char *previous_message_text = json_get_prop_strptr(previous_message, "text");
+			json_value *previous_message = json_get_prop(json, "previous_message");
+			char *previous_message_text = json_get_prop_strptr(previous_message, "text");
 
-		if (strcmp(s, previous_message_text) == 0) {
-			// nothing visually changed, so don't print out the difference.
-			g_string_append_printf(html, "");
-		} else {
+			if (g_strcmp0(s, previous_message_text) == 0) {
+				// nothing visually changed, so don't print out the difference.
+				g_string_append_printf(html, "");
+			} else {
+				g_string_append_printf(
+					html,
+					"%s <font color=\"#717274\"><i>(edited)</i> <br><br><i>(Old message was \"%s\")</i></font>", 
+					slack_message_to_html(sa, s, subtype, flags),
+					slack_message_to_html(sa, previous_message_text, subtype, flags)
+				);
+			}
+		// If the message was deleted, we report that it was.
+		} else if (g_strcmp0(subtype, "message_deleted") == 0) {
+			json_value *previous_message = json_get_prop(json, "previous_message");
+			char *previous_message_text = json_get_prop_strptr(previous_message, "text");
+
 			g_string_append_printf(
 				html,
-				"%s <font color=\"#717274\"><i>(edited)</i> <br><br><i>(Old message was \"%s\")</i></font>", 
-				slack_message_to_html(sa, s, subtype, flags),
+				"<font color=\"#717274\"<i>(Deleted message: \"%s\")</i></font>", 
 				slack_message_to_html(sa, previous_message_text, subtype, flags)
 			);
 		}
