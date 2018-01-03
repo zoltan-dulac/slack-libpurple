@@ -509,6 +509,8 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 	g_string_free(border, TRUE);
 	//g_string_free(truncated_text, TRUE);
 
+	debug(html->str);
+
 	return g_string_free(html, FALSE);
 }
 
