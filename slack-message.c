@@ -301,6 +301,13 @@ gchar *slack_json_to_html(SlackAccount *sa, json_value *json, const char *subtyp
 				"<font color=\"#717274\"<i>(Deleted message: \"%s\")</i></font>", 
 				slack_message_to_html(sa, previous_message_text, subtype, flags)
 			);
+		} else {
+			s = json_get_prop_strptr(json, "text");
+			g_string_append_printf(
+				html,
+				"%s",
+				slack_message_to_html(sa, s, subtype, flags)
+			);
 		}
 	// assume this is just a text message.
 	} else {
@@ -444,7 +451,7 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 			"%s"
 
 			// top border
-			"<br />%s"
+			"%s%s"
 			"<br />"
 
 			// service name and author name
@@ -471,10 +478,11 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 		"</font>",
 
 		// pretext
-		pretext ? pretext : "",
+		pretext ? slack_message_to_html(sa, pretext, "attachment", flags) : "",
 		pretext ? "<br /><br />" : "",
 
 		// top border
+		!pretext ? "<br />" : "",
 		border->str,
 
 		// service name and author name
