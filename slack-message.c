@@ -254,6 +254,24 @@ void add_slack_attachments_to_buffer(GString *buffer, SlackAccount *sa, json_val
 	}
 }
 
+gchar *image_json_to_html(SlackAccount *sa, json_value *image_json, const char *subtype, PurpleMessageFlags *flags) {
+	PurpleHttpConnection *connection;
+	char *link_url = json_get_prop_strptr(image_json, "permalink");
+	char *image_url = json_get_prop_strptr(image_json, "thumb_360");
+
+	connection = purple_http_get(sa->gc, insert_image, sa, image_url);
+	purple_http_request_set_max_len(purple_http_conn_get_request(connection), -1);
+	g_dataset_set_data_full(connection, "url", g_strdup(link_url), g_free);
+	g_dataset_set_data_full(connection, "gaia_id", g_strdup(gaia_id), g_free);
+	g_dataset_set_data_full(connection, "conv_id", g_strdup(conv_id), g_free);
+	g_dataset_set_data(connection, "msg_flags", GINT_TO_POINTER(msg_flags));
+	g_dataset_set_data(connection, "message_timestamp", GINT_TO_POINTER(message_timestamp));
+}
+
+void insert_image() {
+
+}
+
 gchar *slack_json_to_html(SlackAccount *sa, json_value *json, const char *subtype, PurpleMessageFlags *flags) {
 	GString *html = g_string_sized_new(0);
 	char *s;
@@ -270,6 +288,8 @@ gchar *slack_json_to_html(SlackAccount *sa, json_value *json, const char *subtyp
 	
 	// Check to see if the message is a special subtype.
 	if (subtype) {
+		debug("subtype");
+		debug((char *)subtype);
 		// If the message was editted, we show how the message was changed.
 		// We do this by displayed the changed message and what it was originally,
 		// since we can't do what the official slack plugin does and rewrite history.
@@ -300,6 +320,13 @@ gchar *slack_json_to_html(SlackAccount *sa, json_value *json, const char *subtyp
 				html,
 				"<font color=\"#717274\"<i>(Deleted message: \"%s\")</i></font>", 
 				slack_message_to_html(sa, previous_message_text, subtype, flags)
+			);
+		} else {
+			s = json_get_prop_strptr(json, "text");
+			g_string_append_printf(
+				html,
+				"%s",
+				slack_message_to_html(sa, s, subtype, flags)
 			);
 		}
 	// assume this is just a text message.
@@ -437,7 +464,7 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 
 	g_string_printf(
 		html,
-		"<br /><font color=\"#717274\"><tt>"
+		"<br /><font color=\"#717274\">"
 
 			// pretext
 			"%s"
@@ -468,7 +495,7 @@ gchar *slack_attachment_to_html(SlackAccount *sa, json_value *attachment, Purple
 			// footer
 			"%s%s%s"
 
-		"</tt></font>",
+		"</font>",
 
 		// pretext
 		pretext ? slack_message_to_html(sa, pretext, "attachment", flags) : "",
